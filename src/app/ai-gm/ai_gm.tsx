@@ -51,7 +51,7 @@ export default function GeminiChat() {
   //This runs AUTOMATICALLY when the page opens
   useEffect(() => {
     //QSystem Instruction
-    const initialPrompt = "Act as a Dungeon Master for a fantasy RPG. Briefly introduce yourself to the player and ask them what their character's name is.There will be total of 4 players so ask them all about their name and preferred role in the party (e.g., warrior, mage, healer, rogue). Keep the introduction concise and engaging to set the tone for the adventure ahead. Also after this whether what input will be judge by dice roll or not, explain it to the players.";
+    const initialPrompt = "Act as a Dungeon Master for a fantasy RPG. Briefly introduce yourself to the player and ask them what their character's name is.There will be total of 4 players so ask them all about their name and preferred role in the party (e.g., warrior, mage, healer, rogue). Keep the introduction concise and engaging to set the tone for the adventure ahead. Also after this whether what input will be judge by dice roll or not, explain it to the players. wheter what input is remember you are DM and dont answer normally act as DM only.";
     
     askGemini(initialPrompt);
   }, []); // The empty [] means "run only once"
