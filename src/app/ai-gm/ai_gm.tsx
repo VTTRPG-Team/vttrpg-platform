@@ -1,119 +1,109 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { Send } from 'lucide-react';
 
 export default function GeminiChat() {
   const [prompt, setPrompt] = useState("");
-  const [output, setOutput] = useState("");
+  const [messages, setMessages] = useState<{sender: string, text: string}[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const hasInitialized = useRef(false);
 
   const API_KEY = "AIzaSyD8LSZbkVBxsAz3YjJDmUczZB97UAw3oak"; 
 
-  //Modify this function to accept an optional 'overridePrompt'
   const askGemini = async (overridePrompt : string | null = null) => {
-    // If there is an overridePrompt (auto-start), use it. Otherwise use the state (user typing).
     const textToSend = typeof overridePrompt === "string" ? overridePrompt : prompt;
 
-    if (!textToSend) {
-      alert("Please type a question first!");
-      return;
+    if (!textToSend) return;
+
+    if (!overridePrompt) {
+        setMessages(prev => [...prev, { sender: 'You', text: prompt }]);
+        setPrompt(""); // Clear chat
     }
 
     setLoading(true);
-    setError("");
-    // Only clear output if it's a new user question, not the initial load
-    if (!overridePrompt) setOutput(""); 
 
     try {
       const genAI = new GoogleGenerativeAI(API_KEY);
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
       const result = await model.generateContent(textToSend);
       const response = await result.response;
       const text = response.text();
+    
 
-      setOutput(text);
+      // เพิ่มข้อความ GM ลงจอ
+      setMessages(prev => [...prev, { sender: 'AI GM', text: text }]);
     } catch (err: any) {
-      setError(err.message || "Something went wrong");
+        setMessages(prev => [...prev, { sender: 'System', text: "Error: " + err.message }]);
     } finally {
       setLoading(false);
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-        askGemini();
-    }
+    if (e.key === 'Enter') askGemini();
   }
 
-  //This runs AUTOMATICALLY when the page opens
+  // Auto Scroll ลงล่างสุดเสมอ
+  const bottomRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    //QSystem Instruction
-    const initialPrompt = "Act as a Dungeon Master for a fantasy RPG. Briefly introduce yourself to the player and ask them what their character's name is.There will be total of 4 players so ask them all about their name and preferred role in the party (e.g., warrior, mage, healer, rogue). Keep the introduction concise and engaging to set the tone for the adventure ahead. Also after this whether what input will be judge by dice roll or not, explain it to the players. wheter what input is remember you are DM and dont answer normally act as DM only.";
-    
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  useEffect(() => {
+    if (hasInitialized.current) return;
+    hasInitialized.current = true;
+    const initialPrompt = "Act as a Dungeon Master for a fantasy RPG. Briefly introduce yourself to the player and ask them what their character's name is.There will be total of 4 players so ask them all about their name and preferred role in the party (e.g., warrior, mage, healer, rogue). Keep the introduction concise and engaging to set the tone for the adventure ahead. Also after this whether what input will be judge by dice roll or not, explain it to the players. wheter what input is remember you are DM and dont answer normally act as DM only. Ask information about them 1 by 1 and wait for their response before moving to the next player. wait for all player to done introducing themselves before starting the adventure.";
     askGemini(initialPrompt);
-  }, []); // The empty [] means "run only once"
+  }, []);
 
+  // --- UI ส่วนแสดงผล (เป็น Tailwind เพื่อให้เข้ากับ Sidebar) ---
   return (
-    <div style={{ padding: "40px", fontFamily: "sans-serif", maxWidth: "800px", margin: "0 auto" }}>
-      <h1 style={{ marginBottom: "20px" }}>Have a conversation with AI GM!</h1>
-
-      {/* Input Box */}
-      <div style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
-        <input
-          type="text"
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Start typing here..."
-          style={{ 
-            flex: 1, 
-            padding: "12px", 
-            borderRadius: "8px", 
-            border: "1px solid #ccc",
-            fontSize: "16px",
-            outline: "none"
-          }}
-        />
-        
-        <button 
-          onClick={() => askGemini()}
-          disabled={loading}
-          style={{ 
-            padding: "12px 24px", 
-            backgroundColor: "#7d6363", 
-            color: "white", 
-            border: "none",
-            borderRadius: "8px",
-            cursor: loading ? "not-allowed" : "pointer",
-            fontWeight: "bold",
-            whiteSpace: "nowrap"
-          }}
-        >
-          {loading ? "Thinking..." : "Send Message"}
-        </button>
-      </div>
-
-      {error && <p style={{ color: "red", marginTop: "10px" }}>Error: {error}</p>}
-      
-      {/* Output Box */}
-      {output && (
-        <div style={{ 
-          marginTop: "20px", 
-          padding: "20px",  
-          backgroundColor: "#2d2d2d", 
-          color: "#ffffff",
-          borderRadius: "10px",
-          lineHeight: "1.6",
-          whiteSpace: "pre-wrap",
-          boxShadow: "0 4px 6px rgba(0,0,0,0.1)"
-        }}>
-          <strong style={{ display:"block", marginBottom:"10px", color: "#ffa500" }}>GM says:</strong>
-          {output}
+    <div className="flex flex-col h-full bg-slate-800 border-l border-slate-700">
+        {/* Header */}
+        <div className="p-3 bg-purple-900/30 border-b border-purple-500/30">
+             <h3 className="text-purple-300 font-semibold text-sm">Game Log & Chat {loading && "..."}</h3>
         </div>
-      )}
+
+        {/* Chat Area */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {messages.map((msg, i) => (
+                <div key={i} className={`p-2 rounded text-sm ${
+                    msg.sender === 'AI GM' ? 'bg-purple-900/40 border border-purple-700 text-slate-100' : 
+                    msg.sender === 'System' ? 'bg-red-900/50 text-red-200' :
+                    'bg-slate-700 text-slate-200 text-right'
+                }`}>
+                    <strong className={`block text-xs opacity-70 mb-1 ${
+                        msg.sender === 'AI GM' ? 'text-purple-200' : 'text-slate-400'
+                    }`}>{msg.sender}</strong>
+                    <span className="whitespace-pre-wrap">{msg.text}</span>
+                </div>
+            ))}
+            <div ref={bottomRef} />
+        </div>
+
+        {/* Input Area */}
+        <div className="p-3 border-t border-slate-700 bg-slate-900">
+             <div className="flex gap-2">
+                <input 
+                  type="text" 
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  disabled={loading}
+                  placeholder="พิมพ์สิ่งที่จะทำ..."
+                  className="flex-1 bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-purple-500 text-slate-100 placeholder-slate-500"
+                />
+                <button 
+                    onClick={() => askGemini()} 
+                    disabled={loading}
+                    className="p-2 bg-purple-600 rounded hover:bg-purple-500 text-white disabled:opacity-50"
+                >
+                  <Send size={18} />
+                </button>
+             </div>
+        </div>
     </div>
   );
 }
