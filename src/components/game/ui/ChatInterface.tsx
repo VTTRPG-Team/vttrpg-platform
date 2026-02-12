@@ -7,32 +7,29 @@ import { Send } from 'lucide-react'
 export default function ChatInterface() {
   const { activeTab, setActiveTab } = useGameStore()
   
-  const { messages, loading, currentAiText, askGemini, sendPartyMessage } = ai_gm(); 
+  const { messages, loading, currentAiText, askGemini, sendPartyMessage, currentUserId } = ai_gm(); 
   
   const [inputText, setInputText] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, currentAiText, activeTab]); // เพิ่ม activeTab เพื่อให้สลับหน้าแล้วเลื่อนลงสุดเสมอ
+  }, [messages, currentAiText, activeTab]);
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim()) return;
-    if (activeTab === 'AI_GM' && loading) return; // ห้ามพิมพ์แทรกตอน AI คิด
+    if (activeTab === 'AI_GM' && loading) return;
 
     if (activeTab === 'PARTY') {
-       // ส่งเข้าห้อง Party (ไม่เรียก AI)
        sendPartyMessage(inputText);
     } else {
-       // ส่งหา AI
        askGemini(inputText);
     }
     setInputText('');
   }
 
   const displayMessages = messages.filter(msg => {
-      // ถ้าอยู่แท็บไหน ให้โชว์เฉพาะข้อความที่มี channel ตรงกับแท็บนั้น
       if (activeTab === 'PARTY') return msg.channel === 'PARTY';
       if (activeTab === 'AI_GM') return msg.channel === 'AI';
       return false;
@@ -49,19 +46,34 @@ export default function ChatInterface() {
 
       {/* MESSAGE LIST */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-hide">
-        {displayMessages.map((msg, i) => (
-          <div key={i} className={`flex flex-col ${msg.type === 'USER' ? 'items-end' : 'items-start'}`}>
-            <span className="text-[10px] text-gray-500 mb-1">{msg.sender}</span>
-            <div className={`px-3 py-2 rounded-lg max-w-[95%] text-sm whitespace-pre-wrap ${
-              msg.type === 'AI' ? 'bg-purple-900/50 text-purple-100 border border-purple-500/30' : 
-              msg.type === 'USER' ? 'bg-blue-600 text-white' : 'bg-red-900/50 text-red-200'
-            }`}>
-              {msg.text}
+        {displayMessages.map((msg, i) => {
+          // ✅ Logic เช็คว่าเป็นใครส่ง
+          const isMe = msg.userId === currentUserId;
+          const isAI = msg.type === 'AI';
+          
+          return (
+            <div 
+              key={i} 
+              className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`} // ✅ ถ้าเป็นเราชิดขวา คนอื่นชิดซ้าย
+            >
+              {/* ชื่อคนส่ง (ถ้าเป็นเราไม่ต้องโชว์ชื่อ หรือโชว์เป็น Me ก็ได้) */}
+              <span className="text-[10px] text-gray-500 mb-1">
+                {isMe ? 'You' : msg.sender}
+              </span>
+
+              {/* กล่องข้อความ */}
+              <div className={`px-3 py-2 rounded-lg max-w-[95%] text-sm whitespace-pre-wrap ${
+                isAI ? 'bg-purple-900/50 text-purple-100 border border-purple-500/30' : // สี AI
+                isMe ? 'bg-blue-600 text-white' : //สีเรา (ฟ้า)
+                'bg-neutral-700 text-gray-200'    //สีเพื่อน (เทา)
+              }`}>
+                {msg.text}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         
-        {/* Real-time Typing (เฉพาะแท็บ AI) */}
+        {/* Real-time Typing */}
         {activeTab === 'AI_GM' && loading && currentAiText && (
            <div className="flex flex-col items-start">
              <span className="text-[10px] text-purple-400 mb-1">AI GM</span>
@@ -73,7 +85,7 @@ export default function ChatInterface() {
         <div ref={bottomRef} />
       </div>
 
-      {/* INPUT AREA */}
+      {/* INPUT AREA (เหมือนเดิม) */}
       <div className="p-3 border-t border-white/10 bg-neutral-800/80">
         <form onSubmit={handleSend} className="flex gap-2 items-end">
           <input
