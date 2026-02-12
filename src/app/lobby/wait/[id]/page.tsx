@@ -1,0 +1,311 @@
+'use client';
+import { useEffect, useState, useRef } from 'react';
+import { supabase } from '@/lib/supabase';
+import { useRouter, useParams } from 'next/navigation';
+import { Mic, Send, CheckCircle, Crown, XCircle, User } from 'lucide-react';
+
+export default function WaitingRoomPage() {
+  const router = useRouter();
+  const params = useParams();
+  const roomId = params?.id as string;
+
+  const [room, setRoom] = useState<any>(null);
+  const [players, setPlayers] = useState<any[]>([]);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
+
+  // --- Functions Load Data ---
+
+  const fetchPlayers = async () => {
+    if (!roomId) return;
+    const { data, error } = await supabase
+      .from('room_players')
+      .select('id, user_id, is_ready, joined_at, profiles(username, avatar_url)') 
+      .eq('room_id', roomId)
+      .order('joined_at', { ascending: true });
+
+    if (data) {
+      const formatted = data.map((p: any) => ({
+        uniqueKey: p.id,
+        id: p.user_id,
+        name: p.profiles?.username || 'Unknown',
+        avatar: p.profiles?.avatar_url,
+        isReady: p.is_ready
+      }));
+      setPlayers(formatted);
+    }
+  };
+
+  const fetchMessages = async () => {
+    if (!roomId) return;
+    const { data } = await supabase
+      .from('lobby_messages')
+      .select('*, profiles(username)')
+      .eq('room_id', roomId)
+      .order('created_at', { ascending: true });
+    
+    if (data) setMessages(data);
+  };
+
+  // --- Init ---
+  useEffect(() => {
+    if (!roomId) return;
+
+    const init = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUser(user);
+
+      // โหลดข้อมูลห้อง
+      const { data: roomData, error } = await supabase.from('rooms').select('*').eq('id', roomId).single();
+      if (error) return router.push('/lobby/join');
+      setRoom(roomData);
+
+      // โหลดครั้งแรก
+      fetchPlayers();
+      fetchMessages();
+
+      // --- Realtime ---
+      const channel = supabase.channel(`room-live-${roomId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'room_players', filter: `room_id=eq.${roomId}` }, () => fetchPlayers())
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'lobby_messages', filter: `room_id=eq.${roomId}` }, () => fetchMessages())
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, (payload) => {
+           if (payload.new.status === 'playing') router.push(`/room/${roomId}`);
+        })
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, () => {
+           alert("The Host has disbanded the party.");
+           router.push('/lobby/join'); // ดีดทุกคนกลับไปหน้าหาห้อง
+        })
+        .subscribe();
+
+      return () => { supabase.removeChannel(channel); };
+    };
+    init();
+  }, [roomId, router]);
+
+  // Auto Scroll Chat
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  useEffect(() => {
+    const handleBeforeUnload = async () => {
+      // ถ้า Host ปิดจอ -> สั่งลบห้อง
+      if (currentUser && room && currentUser.id === room.host_id) {
+         supabase.from('rooms').delete().eq('id', roomId).then();
+      } 
+      // ถ้า Player ปิดจอ -> ลบตัวเอง
+      else if (currentUser) {
+         supabase.from('room_players').delete().eq('room_id', roomId).eq('user_id', currentUser.id).then();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [currentUser, room, roomId]);
+
+  // --- Actions ---
+
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !currentUser) return;
+    
+    const msgContent = newMessage;
+    setNewMessage(''); // เคลียร์ช่องพิมพ์ทันที
+    
+    // 1. (แก้ปัญหาต้อง Refresh) ยัดข้อความลงหน้าจอตัวเองก่อนเลย (Optimistic Update)
+    const tempId = Math.random().toString();
+    setMessages(prev => [...prev, {
+       id: tempId,
+       user_id: currentUser.id,
+       content: msgContent,
+       profiles: { username: 'Me' } // ใส่ชื่อชั่วคราวไปก่อน
+    }]);
+
+    // 2. ส่งเข้า Database
+    await supabase.from('lobby_messages').insert({
+      room_id: roomId,
+      user_id: currentUser.id,
+      content: msgContent
+    });
+    
+    // 3. สั่งโหลดใหม่อีกทีเพื่อความชัวร์ (เผื่อ Realtime ไม่ทำงาน)
+    fetchMessages();
+  };
+
+  const handleToggleReady = async () => {
+    if (!currentUser) return;
+    const myPlayer = players.find(p => p.id === currentUser.id);
+    if (myPlayer) {
+      // อัปเดต UI ตัวเองทันที (Optimistic)
+      setPlayers(prev => prev.map(p => p.id === currentUser.id ? { ...p, isReady: !p.isReady } : p));
+
+      await supabase.from('room_players')
+        .update({ is_ready: !myPlayer.isReady })
+        .eq('room_id', roomId)
+        .eq('user_id', currentUser.id);
+    }
+  };
+
+  const handleStartGame = async () => {
+    // อัปเดตสถานะห้อง -> Trigger ให้ทุกคนย้ายหน้า
+    await supabase.from('rooms').update({ status: 'playing' }).eq('id', roomId);
+    // ย้ายตัวเองด้วยเลย (กันเหนียวถ้า Realtime ช้า)
+    router.push(`/room/${roomId}`);
+  };
+
+  const handleExit = async () => {
+    if (!currentUser || !room) return;
+    
+    // เช็คก่อนว่าเป็น Host ไหม
+    const isHost = currentUser.id === room.host_id;
+
+    if (currentUser.id === room.host_id) {
+      // Host: ลบห้อง -> กลับหน้า Lobby หลัก
+      await supabase.from('rooms').delete().eq('id', room.id);
+      router.push('/lobby'); 
+    } else {
+      // Player: ลบตัวเอง -> กลับหน้าหาห้อง
+      await supabase.from('room_players').delete().eq('room_id', room.id).eq('user_id', currentUser.id);
+      router.push('/lobby/join'); 
+    }
+  };
+
+  if (!room || !currentUser) return <div className="min-h-screen bg-[#1a120b] flex items-center justify-center text-[#F4E4BC] font-mono text-xl animate-pulse">Loading Dungeon...</div>;
+
+  const isHost = currentUser.id === room.host_id;
+  const myPlayer = players.find(p => p.id === currentUser.id);
+  const isMeReady = myPlayer?.isReady || false;
+  
+  // Logic ปุ่ม Start: ต้องมีคนมากกว่า 1 และทุกคนต้อง Ready
+  const hasEnoughPlayers = players.length >= 2; 
+  const everyoneReady = players.every(p => p.id === room.host_id || p.isReady);
+  const canStart = hasEnoughPlayers && everyoneReady;
+
+  return (
+    <div className="min-h-screen bg-[#1a120b] font-mono relative flex flex-col items-center p-8">
+      <div className="absolute inset-0 bg-[url('/images/dungeon-bg.jpg')] bg-cover opacity-40 blur-sm"></div>
+
+      <div className="absolute top-6 right-6 z-20">
+        <button onClick={handleExit} className="px-6 py-2 bg-[#5A2D0C] border-2 border-[#F4E4BC] text-[#F4E4BC] font-bold hover:bg-red-900 rounded shadow-lg">
+          EXIT LOBBY
+        </button>
+      </div>
+
+      <div className="z-10 w-full max-w-5xl flex gap-6 h-[80vh] mt-10">
+        
+        {/* Left: Info */}
+        <div className="w-1/3 bg-[#D4C5A2] rounded-lg border-4 border-[#5A2D0C] p-6 shadow-2xl flex flex-col">
+          <h1 className="text-3xl font-bold text-[#3e2723] mb-2">{room.name}</h1>
+          <div className="text-sm text-[#5A2D0C] mb-4 font-bold uppercase border-b-2 border-[#5A2D0C]/30 pb-2">
+            Players: {players.length}/{room.max_players}
+          </div>
+          <div className="bg-[#3e2723] text-[#F4E4BC] p-4 rounded mb-4 flex-1 border border-[#5A2D0C] overflow-y-auto">
+             <p className="text-sm opacity-90 italic">"{room.description || 'No description...'}"</p>
+          </div>
+          <img src={room.image_url || "/images/cover-placeholder.jpg"} className="rounded shadow-lg w-full h-40 object-cover bg-gray-800 grayscale" alt="Cover" />
+        </div>
+
+        {/* Right: Players & Chat */}
+        <div className="flex-1 flex flex-col gap-4">
+           
+           {/* Player Grid */}
+           <div className="flex gap-4 overflow-x-auto pb-4 custom-scrollbar">
+              {players.map((p) => (
+                <div key={p.uniqueKey} className={`w-32 flex-shrink-0 rounded-lg border-2 p-2 flex flex-col items-center shadow-lg relative transition-all duration-300 ${p.isReady ? 'bg-green-100 border-green-600 scale-105' : 'bg-[#F4E4BC] border-[#5A2D0C]'}`}>
+                   <div className="w-20 h-20 rounded-full border-4 border-[#3e2723] overflow-hidden bg-gray-700 relative">
+                      {p.avatar ? <img src={p.avatar} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-gray-500"><User /></div>}
+                      {p.isReady && <div className="absolute inset-0 bg-green-500/30 flex items-center justify-center animate-in fade-in zoom-in"><CheckCircle className="text-white w-10 h-10 drop-shadow-md"/></div>}
+                   </div>
+                   <div className="mt-2 text-xs font-bold text-center truncate w-full text-[#3e2723] px-1 bg-white/50 rounded">{p.name}</div>
+                   {p.id === room.host_id && <div className="absolute -top-3 -left-2 text-2xl drop-shadow-md"><Crown className="text-yellow-500 fill-yellow-400 w-8 h-8"/></div>}
+                </div>
+              ))}
+              
+              {[...Array(Math.max(0, room.max_players - players.length))].map((_, i) => (
+                 <div key={i} className="w-32 flex-shrink-0 border-2 border-dashed border-[#F4E4BC]/30 rounded-lg flex flex-col items-center justify-center text-[#F4E4BC]/30 font-bold bg-black/20">
+                    <span className="text-4xl mb-2 opacity-50">+</span>
+                    <span className="text-sm">Empty</span>
+                 </div>
+              ))}
+           </div>
+
+           {/* Chat Box (แก้ซ้ายขวาแล้ว) */}
+           <div className="flex-1 bg-[#F4E4BC] rounded-lg border-4 border-[#5A2D0C] flex flex-col shadow-2xl relative">
+              <div className="bg-[#5A2D0C] text-[#F4E4BC] px-4 py-2 font-bold text-sm">💬 Party Chat</div>
+              
+              <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-[#D4C5A2]/30 flex flex-col">
+                 {messages.length === 0 && <div className="text-center text-gray-500 text-sm mt-10 opacity-50">No messages yet...</div>}
+                 
+                 {messages.map((msg, i) => {
+                   const isMe = msg.user_id === currentUser.id;
+                   return (
+                     <div 
+                        key={i} 
+                        className={`max-w-[80%] text-sm p-2 rounded-lg shadow-sm animate-in slide-in-from-bottom-1 ${
+                          isMe 
+                            ? 'self-end bg-[#8B4513] text-[#F4E4BC] border border-[#5A2D0C]'
+                            : 'self-start bg-white text-[#3e2723] border border-[#bcaaa4]'
+                        }`}
+                     >
+                       <div className={`text-xs font-bold opacity-70 mb-1 ${isMe ? 'text-right' : 'text-left'}`}>
+                          {msg.profiles?.username || 'Unknown'}
+                       </div>
+                       <div className={isMe ? 'text-right' : 'text-left'}>
+                          {msg.content}
+                       </div>
+                     </div>
+                   );
+                 })}
+                 <div ref={chatBottomRef} />
+              </div>
+              
+              <div className="p-3 bg-[#D4C5A2] border-t-2 border-[#5A2D0C] flex gap-2">
+                 <input 
+                   type="text" 
+                   value={newMessage}
+                   onChange={(e) => setNewMessage(e.target.value)}
+                   onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                   className="flex-1 px-4 py-2 rounded border-2 border-[#8B4513] bg-[#F4E4BC] text-[#3e2723] placeholder-[#8B4513]/50 focus:outline-none font-bold" 
+                   placeholder="Type message..." 
+                 />
+                 <button onClick={handleSendMessage} className="p-3 bg-[#5A2D0C] text-white rounded border-2 border-[#3e2723] hover:bg-[#3e1e08]">
+                   <Send size={18}/>
+                 </button>
+              </div>
+           </div>
+
+           {/* Buttons (แก้ Logic Start) */}
+           <div className="flex justify-center mt-2">
+              {isHost ? (
+                <button 
+                  onClick={handleStartGame}
+                  disabled={!canStart} // ปิดปุ่มถ้าคนไม่ครบ หรือยังไม่ Ready
+                  className={`px-12 py-4 font-bold text-2xl border-4 shadow-lg rounded-lg uppercase tracking-widest transition-all ${
+                    canStart
+                    ? 'bg-[#8B4513] text-[#F4E4BC] border-[#F4E4BC] hover:scale-105 cursor-pointer shadow-[0_0_15px_rgba(139,69,19,0.5)]' 
+                    : 'bg-gray-600 text-gray-400 border-gray-500 cursor-not-allowed opacity-80'
+                  }`}
+                >
+                  {!hasEnoughPlayers ? "WAITING FOR PLAYERS..." : (!everyoneReady ? "WAITING FOR READY..." : "START ADVENTURE")}
+                </button>
+              ) : (
+                <button 
+                  onClick={handleToggleReady}
+                  className={`px-12 py-4 font-bold text-2xl border-4 shadow-lg rounded-lg uppercase tracking-widest transition-all flex items-center gap-3 ${
+                    isMeReady
+                    ? 'bg-green-700 text-white border-green-400 hover:bg-green-800' 
+                    : 'bg-[#8B4513] text-[#F4E4BC] border-[#F4E4BC] hover:scale-105'
+                  }`}
+                >
+                   {isMeReady ? <>I'M READY! <CheckCircle /></> : <>NOT READY <XCircle className="opacity-50"/></>}
+                </button>
+              )}
+           </div>
+        </div>
+      </div>
+    </div>
+  );
+}

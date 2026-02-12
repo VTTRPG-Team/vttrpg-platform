@@ -1,36 +1,38 @@
 'use client';
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Lock } from 'lucide-react'; // ใช้ไอคอนกุญแจแทน Pixel Art ไปก่อน (หรือใส่ <img> แทนได้)
 import { useRouter } from 'next/navigation';
-import { Cinzel } from 'next/font/google'; // โหลดฟอนต์แฟนตาซี
+import Link from 'next/link';
+import { Scroll, Sparkles, UserPlus, Shield, Mail, Key } from 'lucide-react';
+import { Cinzel, Crimson_Text } from 'next/font/google';
 
-// เรียกใช้ฟอนต์
-const cinzel = Cinzel({ subsets: ['latin'], weight: ['400', '700'] });
+// Font Setup
+const cinzel = Cinzel({ subsets: ['latin'], weight: ['700', '900'] });
+const crimson = Crimson_Text({ subsets: ['latin'], weight: ['400', '600', '700'] });
 
 export default function SignupPage() {
   const router = useRouter();
   const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState('');
+  const [msg, setMsg] = useState<{ text: string, type: 'success' | 'error' } | null>(null);
 
   const handleSignup = async () => {
     if (!email || !password || !username) {
-      setMsg('❌ กรุณากรอกข้อมูลให้ครบถ้วน');
+      setMsg({ text: 'Please fill in all fields to join the guild.', type: 'error' });
       return;
     }
     
     setLoading(true);
-    setMsg('');
+    setMsg(null);
 
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          // *** ทีเด็ด: ส่ง username ไปพร้อมการสมัคร ***
+          // ส่งชื่อตัวละคร (Username) ไปเก็บใน metadata ของ user
           data: {
             username: username, 
           },
@@ -40,104 +42,138 @@ export default function SignupPage() {
       if (error) throw error;
 
       if (data.user) {
-        setMsg('✅ สมัครสมาชิกสำเร็จ! กำลังเข้าสู่โลก...');
-        // รอแป๊บนึงแล้วดีดไปหน้า Main menu
-        setTimeout(() => router.push('/'), 1500);
+        setMsg({ text: 'Registration Successful! Check your owl post (email) to confirm.', type: 'success' });
+        // รอ 2 วินาทีก่อนกลับไปหน้า Login
+        setTimeout(() => router.push('/login'), 2000);
       }
     } catch (err: any) {
-      setMsg(`Error: ${err.message}`);
+      setMsg({ text: err.message, type: 'error' });
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    // พื้นหลังลายแผนที่ (สมมติว่ามีไฟล์ map-bg.jpg หรือใช้สีแทนไปก่อน)
-    <div className={`min-h-screen flex items-center justify-center relative bg-[#d4c5a2] ${cinzel.className}`}>
+    <div className={`min-h-screen flex items-center justify-center relative overflow-hidden bg-[#1a1510] ${crimson.className}`}>
       
-      {/* Background Texture (Overlay ลายกระดาษเก่า) */}
-      <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/aged-paper.png')] opacity-70 pointer-events-none"></div>
-      
-      {/* Decorative Corners (Goblin & Dwarf) */}
-      {/* คุณสามารถเปลี่ยน src เป็น path รูปในเครื่องเช่น /images/goblin.png */}
-      <img src="https://img.icons8.com/color/96/troll.png" alt="Goblin" className="absolute bottom-4 left-4 w-24 h-24 drop-shadow-lg animate-bounce" />
-      <img src="https://img.icons8.com/color/96/dwarf.png" alt="Dwarf" className="absolute bottom-4 right-4 w-24 h-24 drop-shadow-lg animate-pulse" />
+      {/* --- 1. Background Image (ใช้รูปเดียวกับ Login เพื่อความต่อเนื่อง) --- */}
+      <div className="absolute inset-0 z-0">
+        <img 
+            src="/bg-login.jpg" 
+            alt="Tabletop Background HD" 
+            className="w-full h-full object-cover"
+        />
+        <div className="absolute inset-0 bg-black/20" />
+      </div>
 
-      {/* Main Form Container */}
-      <div className="z-10 w-full max-w-md p-8">
+      {/* --- 2. Main Register Form --- */}
+      <div className="relative z-10 w-full max-w-md p-8 animate-fade-in-up">
         
-        {/* Header */}
-        <div className="flex flex-col items-center mb-8">
-          <div className="bg-[#8B4513] p-3 rounded-lg border-2 border-[#5A2D0C] shadow-lg mb-2">
-             <Lock className="text-[#F4E4BC] w-8 h-8" />
-          </div>
-          <h1 className="text-5xl font-bold text-[#3e2723] drop-shadow-md">Register</h1>
-        </div>
-
-        {/* Form Inputs */}
-        <div className="space-y-6">
-          
-          {/* Name Input */}
-          <div className="space-y-1">
-            <label className="text-[#3e2723] font-bold text-sm ml-1">Name</label>
-            <input 
-              type="text" 
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="SomChai"
-              className="w-full px-4 py-3 rounded-md bg-white border-2 border-[#bcaaa4] focus:border-[#8B4513] focus:outline-none text-[#5d4037] placeholder-[#d7ccc8] shadow-inner"
-            />
-          </div>
-
-          {/* Password Input */}
-          <div className="space-y-1">
-            <label className="text-[#3e2723] font-bold text-sm ml-1">Password</label>
-            <input 
-              type="password" 
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="******"
-              className="w-full px-4 py-3 rounded-md bg-white border-2 border-[#bcaaa4] focus:border-[#8B4513] focus:outline-none text-[#5d4037] placeholder-[#d7ccc8] shadow-inner"
-            />
-          </div>
-
-          {/* Email Input */}
-          <div className="space-y-1">
-            <label className="text-[#3e2723] font-bold text-sm ml-1">Email</label>
-            <input 
-              type="email" 
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="ake123@gmail.com"
-              className="w-full px-4 py-3 rounded-md bg-white border-2 border-[#bcaaa4] focus:border-[#8B4513] focus:outline-none text-[#5d4037] placeholder-[#d7ccc8] shadow-inner"
-            />
-          </div>
-
-          {/* Submit Button */}
-          <button 
-            onClick={handleSignup}
-            disabled={loading}
-            className="w-full mt-8 py-3 bg-[#212121] text-white text-lg font-bold rounded-lg shadow-lg hover:bg-[#424242] active:translate-y-1 transition-all border-2 border-[#616161]"
-          >
-            {loading ? 'Creating...' : 'Submit'}
-          </button>
-          
-          {/* Error Message */}
-          {msg && (
-            <div className="p-2 bg-[#ffebee] border border-red-300 text-red-800 text-center rounded text-sm font-sans mt-4">
-              {msg}
+        <div className="flex flex-col items-center justify-center text-center space-y-6">
+            
+            {/* Header: New Recruit */}
+            <div className="space-y-2">
+                <h1 className={`${cinzel.className} text-3xl font-black text-[#3e2723] leading-tight drop-shadow-sm uppercase`}>
+                  New Recruit<br/>Registration
+                </h1>
+                <div className="w-16 h-1 bg-[#8b5e3c] rounded-full mx-auto opacity-70"></div>
+                <p className="text-[#5d4037] text-lg italic font-bold">
+                  "Join the guild, start your journey."
+                </p>
             </div>
-          )}
 
-          {/* Back Link */}
-          <div className="text-center mt-4">
-             <button onClick={() => router.back()} className="text-[#5d4037] underline hover:text-[#8B4513] text-sm font-sans font-bold">
-               Back to Home
-             </button>
-          </div>
+            {/* Form Inputs */}
+            <div className="w-full space-y-4 pt-2 px-4">
+              
+              {/* Username */}
+              <div className="space-y-1 text-left">
+                <label className="flex items-center gap-2 text-xs font-bold text-[#5d4037] uppercase tracking-wider ml-1">
+                   <Shield size={14} /> Adventurer Name
+                </label>
+                <input 
+                  type="text" 
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="w-full px-4 py-3 rounded-lg bg-[#fdfbf7]/60 border border-[#8b5e3c]/30 text-[#3e2723] font-bold focus:outline-none focus:ring-2 focus:ring-[#8b5e3c] focus:bg-[#fdfbf7] transition-all placeholder-[#8b5e3c]/50 shadow-inner"
+                  placeholder="e.g. Aragorn"
+                />
+              </div>
 
+              {/* Email */}
+              <div className="space-y-1 text-left">
+                <label className="flex items-center gap-2 text-xs font-bold text-[#5d4037] uppercase tracking-wider ml-1">
+                   <Mail size={14} /> Email Scroll
+                </label>
+                <input 
+                  type="email" 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full px-4 py-3 rounded-lg bg-[#fdfbf7]/60 border border-[#8b5e3c]/30 text-[#3e2723] font-bold focus:outline-none focus:ring-2 focus:ring-[#8b5e3c] focus:bg-[#fdfbf7] transition-all placeholder-[#8b5e3c]/50 shadow-inner"
+                  placeholder="hero@guild.com"
+                />
+              </div>
+
+              {/* Password */}
+              <div className="space-y-1 text-left">
+                <label className="flex items-center gap-2 text-xs font-bold text-[#5d4037] uppercase tracking-wider ml-1">
+                   <Key size={14} /> Secret Password
+                </label>
+                <input 
+                  type="password" 
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-4 py-3 rounded-lg bg-[#fdfbf7]/60 border border-[#8b5e3c]/30 text-[#3e2723] font-bold focus:outline-none focus:ring-2 focus:ring-[#8b5e3c] focus:bg-[#fdfbf7] transition-all placeholder-[#8b5e3c]/50 shadow-inner"
+                  placeholder="••••••••"
+                />
+              </div>
+            </div>
+
+            {/* Submit Button */}
+            <div className="w-full space-y-3 pt-4 px-4">
+                <button 
+                  onClick={handleSignup}
+                  disabled={loading}
+                  className="w-full py-3 bg-[#3e2723] hover:bg-[#261815] text-[#f4e4bc] font-bold rounded-lg shadow-lg transform active:scale-[0.98] transition-all flex items-center justify-center gap-2 uppercase tracking-wide border border-[#261815]"
+                >
+                  {loading ? <Sparkles className="animate-spin w-5 h-5"/> : (
+                    <>
+                        <UserPlus size={18} /> Sign The Contract
+                    </>
+                  )}
+                </button>
+            </div>
+
+            {/* Footer Link */}
+            <div className="text-center pt-2">
+                 <span className="text-[#5d4037] text-sm font-bold mr-2">Already a member?</span>
+                 <Link href="/login" className="text-[#8b5e3c] hover:text-[#3e2723] text-sm hover:underline font-black uppercase">
+                    Login Here
+                 </Link>
+            </div>
+
+            {/* Message Box */}
+            {msg && (
+              <div className={`p-3 border text-sm rounded-lg text-center w-full shadow-sm animate-pulse ${
+                  msg.type === 'success' 
+                  ? 'bg-green-100/90 border-green-300 text-green-800' 
+                  : 'bg-red-100/90 border-red-300 text-red-800'
+              }`}>
+                {msg.text}
+              </div>
+            )}
         </div>
       </div>
+      
+      {/* Dragon Mascot (Optional: เอาออกก็ได้ถ้าไม่อยากให้ซ้ำกับหน้า Login) */}
+      <div className="absolute -bottom-10 -left-10 z-30 hidden md:block pointer-events-none">
+          <img 
+            src="https://images.unsplash.com/photo-1599704215207-911120a61162?q=80&w=2669&auto=format&fit=crop" 
+            alt="Cute Dragon Mascot"
+            className="w-[250px] h-auto drop-shadow-2xl transform rotate-12 hover:rotate-0 transition-transform duration-500 scale-x-[-1]" 
+            // scale-x-[-1] คือกลับด้านมังกรให้หันมาอีกทาง (จะได้ไม่ซ้ำกับหน้า Login)
+          />
+      </div>
+
     </div>
   );
 }

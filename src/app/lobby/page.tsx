@@ -17,11 +17,11 @@ export default function LobbyPage() {
       <div className="z-10 flex flex-col gap-8 text-center">
         <h1 className="text-4xl text-[#F4E4BC] font-bold drop-shadow-md mb-4">LOBBY</h1>
         
-        <Link href="/room/create">
+        <Link href="/lobby/create">
           <button className={btnStyle}>Create Lobby</button>
         </Link>
         
-        <Link href="/room/join">
+        <Link href="/lobby/join">
           <button className={btnStyle}>Join Lobby</button>
         </Link>
       </div>
