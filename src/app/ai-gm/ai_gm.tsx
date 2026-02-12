@@ -140,21 +140,23 @@ export const ai_gm = () => {
       const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
       const result = await model.generateContent(promptText);
       const text = result.response.text();
-
-      let i = 0;
-      const typingInterval = setInterval(async () => {
-        setCurrentAiText(text.substring(0, i));
-        i++;
-        if (i > text.length) {
-          clearInterval(typingInterval);
-          setCurrentAiText(""); 
-          setLoading(false);
-          
-          // บันทึกข้อความ AI (User ID จะเป็น null)
-          await saveToSupabase({ sender: 'AI GM', text, type: 'AI', channel: 'AI' });
-        }
-      }, 10);
-
+      if (isAutoStart) {
+        await saveToSupabase({ sender: 'AI GM', text, type: 'AI', channel: 'AI' });
+      } else {
+        let i = 0;
+        const typingInterval = setInterval(async () => {
+          setCurrentAiText(text.substring(0, i));
+          i++;
+          if (i > text.length) {
+            clearInterval(typingInterval);
+            setCurrentAiText(""); 
+            setLoading(false);
+            
+            // บันทึกข้อความ AI (User ID จะเป็น null)
+            await saveToSupabase({ sender: 'AI GM', text, type: 'AI', channel: 'AI' });
+          }
+        }, 10);
+      }
     } catch (err: any) {
       console.error(err);
       setLoading(false);
@@ -164,7 +166,6 @@ export const ai_gm = () => {
   // --- 5. Auto Start ---
   useEffect(() => {
     if (hasInitialized.current || !roomId) return;
-    hasInitialized.current = true;
     
     const checkHistory = async () => {
         // ใช้ head: true เพื่อดึงแค่จำนวน ไม่ดึงข้อมูลจริง (ประหยัดเน็ต)
@@ -173,7 +174,8 @@ export const ai_gm = () => {
             .select('*', { count: 'exact', head: true })
             .eq('room_id', roomId);
             
-        if (count === 0) {
+        if (count === 0 && !hasInitialized.current) {
+            hasInitialized.current = true;
             askGemini("Act as a Dungeon Master...", true);
         }
     };
