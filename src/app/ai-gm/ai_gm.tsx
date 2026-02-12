@@ -1,9 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { supabase } from '@/lib/supabase';
 import { useParams } from 'next/navigation';
-
-const API_KEY = "AIzaSyD8LSZbkVBxsAz3YjJDmUczZB97UAw3oak"; 
+import { generateBoardImage } from './ai_asset';
 
 type UIMessage = {
   id: string;
@@ -25,6 +23,7 @@ export const ai_gm = () => {
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [myUsername, setMyUsername] = useState<string>("Player");
+
   useEffect(() => {
     const getUserInfo = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -136,10 +135,21 @@ export const ai_gm = () => {
     setCurrentAiText("");
 
     try {
-      const genAI = new GoogleGenerativeAI(API_KEY);
-      const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
-      const result = await model.generateContent(promptText);
-      const text = result.response.text();
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: promptText })
+      });
+
+      if (!response.ok) throw new Error('Chat API Error');
+      
+      const data = await response.json();
+      const text = data.text;
+      const imagePrompt = isAutoStart 
+        ? `Fantasy RPG Opening Scene: ${text.slice(0, 200)}`
+        : `Fantasy RPG Scene: ${promptText}. Context: ${text.slice(0, 150)}...`;
+        
+      generateBoardImage(roomId, imagePrompt);
       if (isAutoStart) {
         await saveToSupabase({ sender: 'AI GM', text, type: 'AI', channel: 'AI' });
       } else {
@@ -176,7 +186,7 @@ export const ai_gm = () => {
             
         if (count === 0 && !hasInitialized.current) {
             hasInitialized.current = true;
-            askGemini("Act as a Dungeon Master...", true);
+            askGemini("Act as a Dungeon Master. Introduce yourself and the setting...", true);
         }
     };
     checkHistory();
