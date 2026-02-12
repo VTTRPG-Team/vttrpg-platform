@@ -14,22 +14,25 @@ export default function ChatInterface() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, currentAiText, activeTab]);
+  }, [messages, currentAiText, activeTab]); // เพิ่ม activeTab เพื่อให้สลับหน้าแล้วเลื่อนลงสุดเสมอ
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim()) return;
-    if (activeTab === 'AI_GM' && loading) return;
+    if (activeTab === 'AI_GM' && loading) return; // ห้ามพิมพ์แทรกตอน AI คิด
 
     if (activeTab === 'PARTY') {
+       // ส่งเข้าห้อง Party (ไม่เรียก AI)
        sendPartyMessage(inputText);
     } else {
+       // ส่งหา AI
        askGemini(inputText);
     }
     setInputText('');
   }
 
   const displayMessages = messages.filter(msg => {
+      // ถ้าอยู่แท็บไหน ให้โชว์เฉพาะข้อความที่มี channel ตรงกับแท็บนั้น
       if (activeTab === 'PARTY') return msg.channel === 'PARTY';
       if (activeTab === 'AI_GM') return msg.channel === 'AI';
       return false;
@@ -47,14 +50,13 @@ export default function ChatInterface() {
       {/* MESSAGE LIST */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-hide">
         {displayMessages.map((msg, i) => {
-          // ✅ Logic เช็คว่าเป็นใครส่ง
           const isMe = msg.userId === currentUserId;
           const isAI = msg.type === 'AI';
           
           return (
             <div 
               key={i} 
-              className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`} // ✅ ถ้าเป็นเราชิดขวา คนอื่นชิดซ้าย
+              className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`} //ถ้าเป็นเราชิดขวา คนอื่นชิดซ้าย
             >
               {/* ชื่อคนส่ง (ถ้าเป็นเราไม่ต้องโชว์ชื่อ หรือโชว์เป็น Me ก็ได้) */}
               <span className="text-[10px] text-gray-500 mb-1">
@@ -73,7 +75,7 @@ export default function ChatInterface() {
           );
         })}
         
-        {/* Real-time Typing */}
+        {/* Real-time Typing (เฉพาะแท็บ AI) */}
         {activeTab === 'AI_GM' && loading && currentAiText && (
            <div className="flex flex-col items-start">
              <span className="text-[10px] text-purple-400 mb-1">AI GM</span>
@@ -85,7 +87,7 @@ export default function ChatInterface() {
         <div ref={bottomRef} />
       </div>
 
-      {/* INPUT AREA (เหมือนเดิม) */}
+      {/* INPUT AREA */}
       <div className="p-3 border-t border-white/10 bg-neutral-800/80">
         <form onSubmit={handleSend} className="flex gap-2 items-end">
           <input
