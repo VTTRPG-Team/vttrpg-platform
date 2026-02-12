@@ -38,32 +38,31 @@ interface GameState {
   submitPlayerAction: (text: string) => void;
   mockOthersSubmitting: () => void;
 
-  // 4. Game Control (ส่วนที่แก้ให้หายแดง)
-  isPaused: boolean;          // <--- ต้องมีบรรทัดนี้
-  voteStatus: {               // <--- และบรรทัดนี้
+  // 4. Game Control
+  isPaused: boolean;
+  voteStatus: {
     isActive: boolean;
     yesVotes: number;
     neededVotes: number;
     isFinished: boolean;
   };
-  togglePause: () => void;    // <--- ประกาศฟังก์ชันด้วย
+  togglePause: () => void;
   startExitVote: () => void;
   castVote: () => void;
   resetVote: () => void;
 
-  // 5. Dice System
+  // 5. Dice System (แก้ไขใหม่ให้รองรับ Animation)
   diceState: {
-    isActive: boolean;
-    isManualMode: boolean;
-    requiredDice: DiceType;
-    isRolling: boolean;
-    lastResult: number | null;
+    isActive: boolean;        // เปิดหน้าต่างเต๋าไหม
+    requiredDice: DiceType;   // เต๋าชนิดไหน
+    isRolling: boolean;       // 3D Physics กำลังทำงาน (ลูกเต๋ากำลังตก)
+    isShowingResult: boolean; // 3D จบแล้ว -> กำลังโชว์ 2D Overlay (NEW)
+    lastResult: number | null;// ผลลัพธ์
   };
-  triggerDiceRoll: (diceType: DiceType) => void;
-  toggleManualDice: () => void;
-  startRolling: () => void;
-  manualStartRoll: (diceType: DiceType) => void;
-  completeDiceRoll: (result: number) => void;
+  
+  triggerDiceRoll: (diceType: DiceType) => void; // เริ่มทอย (สั่ง 3D)
+  completeDiceRoll: (result: number) => void;    // 3D ตกเสร็จแล้ว (รับค่า)
+  closeDiceUI: () => void;                       // ปิด 2D Overlay (NEW)
 }
 
 // --- Implementation (การทำงานจริง) ---
@@ -113,11 +112,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     }, 4500);
   },
 
-  // 4. Game Control (Implementation)
+  // 4. Game Control
   isPaused: false,
   voteStatus: { isActive: false, yesVotes: 0, neededVotes: 3, isFinished: false },
   
-  togglePause: () => set((state) => ({ isPaused: !state.isPaused })), // <--- ตรงนี้จะหายแดงแล้ว
+  togglePause: () => set((state) => ({ isPaused: !state.isPaused })),
   
   startExitVote: () => set((state) => ({ 
     voteStatus: { ...state.voteStatus, isActive: true, yesVotes: 1, isFinished: false } 
@@ -139,55 +138,56 @@ export const useGameStore = create<GameState>((set, get) => ({
   })),
 
 
-  // 5. Dice Implementation
+  // 5. Dice Implementation (แก้ไข Logic ตรงนี้)
   diceState: {
     isActive: false,
-    isManualMode: false,
     requiredDice: null,
     isRolling: false,
+    isShowingResult: false, // เพิ่ม state นี้
     lastResult: null,
   },
 
+  // สั่งเริ่มทอย: เปิดโหมดทอย และสั่ง isRolling เป็น true (เพื่อ trigger 3D)
   triggerDiceRoll: (diceType) => {
-    set({ diceState: { isActive: true, isManualMode: false, requiredDice: diceType, isRolling: false, lastResult: null } });
     get().addMessage('SYSTEM', `AI requires a ${diceType} roll check!`, 'SYSTEM', 'AI');
+    set({ 
+      diceState: { 
+        isActive: true, 
+        requiredDice: diceType, 
+        isRolling: true,         // เริ่ม Physics 3D
+        isShowingResult: false,  // ยังไม่โชว์ 2D
+        lastResult: null 
+      } 
+    });
   },
 
-  toggleManualDice: () => set((state) => ({
-    diceState: { 
-      ...state.diceState, 
-      isManualMode: !state.diceState.isManualMode,
-      isActive: false, 
-      requiredDice: null 
-    }
-  })),
-
-  startRolling: () => set((state) => ({
-    diceState: { ...state.diceState, isRolling: true }
-  })),
-
-  manualStartRoll: (diceType) => set((state) => ({
-    diceState: { 
-      ...state.diceState, 
-      requiredDice: diceType,
-      isRolling: true 
-    }
-  })),
-
+  // จบการทอย 3D: รับค่ามา แล้วสั่งเปิด UI 2D
   completeDiceRoll: (result) => {
     const { requiredDice } = get().diceState;
-    const resultText = `🎲 Rolled ${requiredDice}: [ ${result} ]`;
     
+    // (Optional) ส่งผลลัพธ์เข้า Chat เลย หรือจะรอปิด UI ก่อนก็ได้
+    const resultText = `🎲 Rolled ${requiredDice}: [ ${result} ]`;
     get().submitPlayerAction(resultText);
 
-    set({
+    set((state) => ({
       diceState: { 
-        isActive: false, 
-        isManualMode: false, 
-        requiredDice: null, 
-        isRolling: false, 
+        ...state.diceState, 
+        isRolling: false,        // หยุด Physics 3D
+        isShowingResult: true,   // เปิด UI 2D (เด้ง Overlay)
         lastResult: result 
       }
-    });
+    }));
+  },
+
+  // สั่งปิด UI ทั้งหมด (เรียกโดย DiceResultOverlay ตอนอนิเมชั่นจบ)
+  closeDiceUI: () => {
+    set((state) => ({
+      diceState: { 
+        ...state.diceState, 
+        isActive: false,        // ปิดทุกอย่าง
+        isShowingResult: false, 
+        lastResult: null 
+      }
+    }));
   }
 }))
