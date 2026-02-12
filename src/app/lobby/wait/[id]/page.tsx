@@ -2,12 +2,79 @@
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter, useParams } from 'next/navigation';
-// เพิ่ม icon ที่ต้องใช้
 import { 
-  Mic, Send, CheckCircle, Crown, XCircle, User, 
-  MicOff, Video, VideoOff, Headphones, HeadphoneOff
+  Send, CheckCircle, Crown, XCircle, User, 
+  Mic, MicOff, Video, VideoOff, Headphones, HeadphoneOff 
 } from 'lucide-react';
 
+// --- LiveKit Imports ---
+import {
+  LiveKitRoom,
+  useTracks,
+  VideoTrack,
+  useRoomContext,
+  useLocalParticipant,
+  isTrackReference,  
+  RoomAudioRenderer,
+} from '@livekit/components-react';
+import { Track } from 'livekit-client';
+import '@livekit/components-styles';
+
+// ==========================================
+// 1. Component ย่อย: แสดงวิดีโอในกรอบวงกลม
+// ==========================================
+const PlayerVideo = ({ participantIdentity }: { participantIdentity: string }) => {
+  // ดึง Track วิดีโอของคนคนนี้ (Camera Only)
+  const tracks = useTracks(
+    [{ source: Track.Source.Camera, withPlaceholder: false }],
+    { onlySubscribed: true }
+  );
+
+  // หา Track ที่ตรงกับ User ID นี้
+  const userTrack = tracks.find(t => t.participant.identity === participantIdentity);
+
+  // --- แก้ตรงนี้: เพิ่ม isTrackReference(userTrack) เพื่อยืนยัน Type ---
+  if (userTrack && isTrackReference(userTrack)) {
+    return (
+      <VideoTrack 
+        trackRef={userTrack} 
+        className="w-full h-full object-cover transform scale-x-[-1]"
+      />
+    );
+  }
+  return null; // ถ้าไม่มีวิดีโอ ให้ส่งค่าว่าง (เพื่อไปโชว์ Avatar แทน)
+};
+
+// ==========================================
+// 2. Component ย่อย: ปุ่มควบคุม (Mic/Cam) ของตัวเอง
+// ==========================================
+const MyControls = ({ isMicOn, isCamOn, toggleMic, toggleCam }: any) => {
+  // ใช้ Hook ของ LiveKit เพื่อคุมอุปกรณ์จริง
+  const { localParticipant } = useLocalParticipant();
+  
+  // Sync ปุ่มกับสถานะจริง (เผื่อเริ่มมาปิดอยู่)
+  useEffect(() => {
+    if (localParticipant) {
+      localParticipant.setMicrophoneEnabled(isMicOn);
+      localParticipant.setCameraEnabled(isCamOn);
+    }
+  }, [isMicOn, isCamOn, localParticipant]);
+
+  return (
+    <div className="absolute inset-0 bg-black/60 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+       <button onClick={toggleMic} className={`p-1.5 rounded-full ${isMicOn ? 'bg-gray-200 text-green-700' : 'bg-red-500 text-white'}`}>
+          {isMicOn ? <Mic size={14}/> : <MicOff size={14}/>}
+       </button>
+       <button onClick={toggleCam} className={`p-1.5 rounded-full ${isCamOn ? 'bg-gray-200 text-blue-700' : 'bg-red-500 text-white'}`}>
+          {isCamOn ? <Video size={14}/> : <VideoOff size={14}/>}
+       </button>
+    </div>
+  );
+};
+
+// ==========================================
+// 3. Component หลัก: Waiting Room
+// ==========================================
 export default function WaitingRoomPage() {
   const router = useRouter();
   const params = useParams();
@@ -18,17 +85,35 @@ export default function WaitingRoomPage() {
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [currentUser, setCurrentUser] = useState<any>(null);
-  
-  // --- Media State (เพิ่มใหม่) ---
-  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const [isMicOn, setIsMicOn] = useState(true);
-  const [isCamOn, setIsCamOn] = useState(true);
-  const [isSpeakerOn, setIsSpeakerOn] = useState(true);
-  const myVideoRef = useRef<HTMLVideoElement>(null);
-  
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
-  // --- Functions Load Data ---
+  // LiveKit State
+  const [token, setToken] = useState("");
+  const [isMicOn, setIsMicOn] = useState(true);
+  const [isCamOn, setIsCamOn] = useState(true);
+  const [isSpeakerOn, setIsSpeakerOn] = useState(true); // (Note: Logic ลำโพงต้องจัดการที่ AudioRenderer ถ้ายากเกินไปให้คงไว้เป็น UI ก่อน)
+
+  // --- 1. Fetch Token for LiveKit ---
+  useEffect(() => {
+    if (!currentUser || !roomId || token) return;
+    
+    (async () => {
+      try {
+        // ขอ Profile เพื่อเอาชื่อไปแสดง
+        const { data: profile } = await supabase.from('profiles').select('username').eq('id', currentUser.id).single();
+        const username = profile?.username || 'User';
+
+        // เรียก API ที่เราสร้างในข้อ 3
+        const resp = await fetch(`/api/livekit?room=${roomId}&username=${username}&userId=${currentUser.id}`);
+        const data = await resp.json();
+        setToken(data.token);
+      } catch (e) {
+        console.error(e);
+      }
+    })();
+  }, [currentUser, roomId, token]);
+
+  // --- 2. Load Supabase Data (เหมือนเดิม) ---
   const fetchPlayers = async () => {
     if (!roomId) return;
     const { data } = await supabase
@@ -51,37 +136,18 @@ export default function WaitingRoomPage() {
 
   const fetchMessages = async () => {
     if (!roomId) return;
-    const { data } = await supabase
-      .from('lobby_messages')
-      .select('*, profiles(username)')
-      .eq('room_id', roomId)
-      .order('created_at', { ascending: true });
+    const { data } = await supabase.from('lobby_messages').select('*, profiles(username)').eq('room_id', roomId).order('created_at', { ascending: true });
     if (data) setMessages(data);
   };
 
-  // --- Init & Media Setup ---
   useEffect(() => {
     if (!roomId) return;
-
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setCurrentUser(user);
-
-      // ขอเข้าถึงกล้องและไมค์ (User Media)
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        setLocalStream(stream);
-      } catch (err) {
-        console.error("Error accessing media:", err);
-        // ถ้าไม่ให้สิทธิ์ ก็ตั้งเป็น false ไว้ก่อน
-        setIsMicOn(false);
-        setIsCamOn(false);
-      }
-
       const { data: roomData, error } = await supabase.from('rooms').select('*').eq('id', roomId).single();
       if (error) return router.push('/lobby/join');
       setRoom(roomData);
-
       fetchPlayers();
       fetchMessages();
 
@@ -96,57 +162,12 @@ export default function WaitingRoomPage() {
            router.push('/lobby/join');
         })
         .subscribe();
-
-      return () => { 
-        supabase.removeChannel(channel); 
-        // Cleanup Stream ตอนออกจากหน้า
-        localStream?.getTracks().forEach(track => track.stop());
-      };
+      return () => { supabase.removeChannel(channel); };
     };
     init();
   }, [roomId, router]);
 
-  // --- Attach Stream to Video Element ---
-  useEffect(() => {
-    if (myVideoRef.current && localStream) {
-      myVideoRef.current.srcObject = localStream;
-    }
-  }, [localStream, isCamOn, players]); // Re-run เมื่อ UI เปลี่ยน
-
-  // --- Media Controls ---
-  const toggleMic = () => {
-    if (localStream) {
-      localStream.getAudioTracks().forEach(track => track.enabled = !isMicOn);
-      setIsMicOn(!isMicOn);
-    }
-  };
-
-  const toggleCam = () => {
-    if (localStream) {
-      localStream.getVideoTracks().forEach(track => track.enabled = !isCamOn);
-      setIsCamOn(!isCamOn);
-    }
-  };
-
-  const toggleSpeaker = () => {
-    // Note: อันนี้เป็น Logic UI สำหรับ Mute คนอื่น (ในอนาคต)
-    setIsSpeakerOn(!isSpeakerOn);
-  };
-
-  // ... (ส่วน Logic ป้องกันปิดจอ, Auto Scroll เหมือนเดิม) ...
   useEffect(() => { chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
-  useEffect(() => {
-    const handleBeforeUnload = async () => {
-      if (currentUser && room && currentUser.id === room.host_id) {
-         supabase.from('rooms').delete().eq('id', roomId).then();
-      } else if (currentUser) {
-         supabase.from('room_players').delete().eq('room_id', roomId).eq('user_id', currentUser.id).then();
-      }
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [currentUser, room, roomId]);
-
 
   // --- Actions ---
   const handleSendMessage = async () => {
@@ -158,7 +179,6 @@ export default function WaitingRoomPage() {
     await supabase.from('lobby_messages').insert({ room_id: roomId, user_id: currentUser.id, content: msgContent });
     fetchMessages();
   };
-
   const handleToggleReady = async () => {
     if (!currentUser) return;
     const myPlayer = players.find(p => p.id === currentUser.id);
@@ -167,12 +187,10 @@ export default function WaitingRoomPage() {
       await supabase.from('room_players').update({ is_ready: !myPlayer.isReady }).eq('room_id', roomId).eq('user_id', currentUser.id);
     }
   };
-
   const handleStartGame = async () => {
     await supabase.from('rooms').update({ status: 'playing' }).eq('id', roomId);
     router.push(`/room/${roomId}`);
   };
-
   const handleExit = async () => {
     if (!currentUser || !room) return;
     if (currentUser.id === room.host_id) {
@@ -189,14 +207,27 @@ export default function WaitingRoomPage() {
   const isHost = currentUser.id === room.host_id;
   const myPlayer = players.find(p => p.id === currentUser.id);
   const isMeReady = myPlayer?.isReady || false;
-  
-  // Logic Start (Updated >= 1)
   const hasEnoughPlayers = players.length >= 1; 
   const everyoneReady = players.every(p => p.id === room.host_id || p.isReady);
   const canStart = hasEnoughPlayers && everyoneReady;
 
   return (
-    <div className="min-h-screen bg-[#1a120b] font-mono relative flex flex-col items-center p-8">
+    // LiveKitRoom ครอบทั้งหน้าเพื่อให้ใช้งาน Hook ข้างในได้
+    <LiveKitRoom
+      video={isCamOn}
+      audio={isMicOn}
+      token={token}
+      serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
+      data-lk-theme="default"
+      connect={true}
+      className="min-h-screen bg-[#1a120b] font-mono relative flex flex-col items-center p-8 w-full"
+    >
+      {/* ถ้าเปิดหูฟัง (isSpeakerOn) ให้เรนเดอร์เสียง ถ้าปิดก็ไม่ต้องเรนเดอร์ */}
+      {isSpeakerOn && <RoomAudioRenderer />}
+      {/* ------------------------------------- */}
+
+      <div className="absolute inset-0 bg-[url('/images/dungeon-bg.jpg')] bg-cover opacity-40 blur-sm"></div>
+      
       <div className="absolute inset-0 bg-[url('/images/dungeon-bg.jpg')] bg-cover opacity-40 blur-sm"></div>
 
       <div className="absolute top-6 right-6 z-20">
@@ -220,14 +251,8 @@ export default function WaitingRoomPage() {
         </div>
 
         {/* Right: Players & Chat */}
-        {/* แก้ 1: ลด gap-4 เป็น gap-2 เพื่อดึง Chat ให้สูงขึ้น */}
         <div className="flex-1 flex flex-col gap-2">
            
-           {/* Player Grid */}
-           {/* แก้ 2: 
-               - เพิ่ม pt-6 (Padding Top) เพื่อให้มีที่ว่างสำหรับมงกุฏ ไม่ให้โดนขอบตัด 
-               - เปลี่ยน h-48 เป็น h-auto เพื่อไม่ให้กินที่เกินจำเป็น
-           */}
            <div className="flex gap-4 overflow-x-auto pb-4 pt-6 px-2 custom-scrollbar items-start h-auto min-h-[160px]">
               {players.map((p) => {
                 const isMe = p.id === currentUser.id;
@@ -235,43 +260,52 @@ export default function WaitingRoomPage() {
                 return (
                   <div key={p.uniqueKey} className={`w-36 flex-shrink-0 rounded-lg border-2 p-2 flex flex-col items-center shadow-lg relative transition-all duration-300 ${p.isReady ? 'bg-green-100 border-green-600 scale-105' : 'bg-[#F4E4BC] border-[#5A2D0C]'}`}>
                      
-                     {/* --- Video / Avatar Frame --- */}
-                     {/* (ส่วน Video/Image) */}
                      <div className="w-24 h-24 rounded-full border-4 border-[#3e2723] overflow-hidden bg-gray-900 relative group">
-                        {isMe && isCamOn ? (
-                           <video ref={myVideoRef} autoPlay muted playsInline className="w-full h-full object-cover transform scale-x-[-1]" />
+                        {/* --- ส่วนสำคัญ: แสดงวิดีโอจาก LiveKit --- */}
+                        {/* ถ้ามี token แล้ว ให้ลองดึงวิดีโอมาโชว์ */}
+                        {token ? (
+                           <div className="w-full h-full relative">
+                              {/* Component นี้จะโชว์วิดีโอถ้าคนนี้เปิดกล้อง */}
+                              <PlayerVideo participantIdentity={p.id} />
+                              
+                              {/* ถ้าเป็นเรา และปิดกล้อง หรือคนอื่นและไม่มีวิดีโอ -> โชว์รูป (ซ้อนข้างหลังหรือบังหน้า) */}
+                              {/* เพื่อความง่าย: ถ้าเป็นเราแล้วปิดกล้อง ให้โชว์รูปทับ */}
+                              {isMe && !isCamOn && (
+                                <div className="absolute inset-0 z-10">
+                                   {p.avatar ? <img src={p.avatar} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-gray-500"><User /></div>}
+                                </div>
+                              )}
+                              {/* ถ้าเป็นคนอื่น แล้ว Track Video หายไป (ปิดกล้อง) LiveKit จะจัดการ return null ใน PlayerVideo -> เราอาจต้องมี fallback image ซ้อนหลังเสมอ */}
+                              <div className="absolute inset-0 -z-10">
+                                  {p.avatar ? <img src={p.avatar} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-gray-500"><User /></div>}
+                              </div>
+                           </div>
                         ) : (
+                           // ถ้ายังไม่มี Token (โหลดอยู่)
                            p.avatar ? <img src={p.avatar} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-gray-500"><User /></div>
                         )}
-                        {/* Ready Badge */}
-                        {p.isReady && <div className="absolute inset-0 bg-green-500/30 flex items-center justify-center animate-in fade-in zoom-in pointer-events-none"><CheckCircle className="text-white w-10 h-10 drop-shadow-md"/></div>}
+
+                        {p.isReady && <div className="absolute inset-0 bg-green-500/30 flex items-center justify-center animate-in fade-in zoom-in pointer-events-none z-20"><CheckCircle className="text-white w-10 h-10 drop-shadow-md"/></div>}
                         
-                        {/* Controls (My Profile Only) */}
-                        {isMe && (
-                          <div className="absolute inset-0 bg-black/60 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                             <button onClick={toggleMic} className={`p-1.5 rounded-full ${isMicOn ? 'bg-gray-200 text-green-700' : 'bg-red-500 text-white'}`}>
-                                {isMicOn ? <Mic size={14}/> : <MicOff size={14}/>}
-                             </button>
-                             <button onClick={toggleCam} className={`p-1.5 rounded-full ${isCamOn ? 'bg-gray-200 text-blue-700' : 'bg-red-500 text-white'}`}>
-                                {isCamOn ? <Video size={14}/> : <VideoOff size={14}/>}
-                             </button>
-                          </div>
+                        {/* Controls (My Profile Only) - เรียกใช้ Component ย่อย */}
+                        {isMe && token && (
+                           <MyControls 
+                             isMicOn={isMicOn} 
+                             isCamOn={isCamOn} 
+                             toggleMic={() => setIsMicOn(!isMicOn)} 
+                             toggleCam={() => setIsCamOn(!isCamOn)} 
+                           />
                         )}
                      </div>
 
-                     {/* Name & Headphone Control */}
                      <div className="mt-2 text-xs font-bold text-center truncate w-full text-[#3e2723] px-1 bg-white/50 rounded flex justify-between items-center">
                         <span className="truncate flex-1 text-left">{p.name}</span>
-                        
-                        {/* แก้ 3: เปลี่ยนจากลำโพง เป็นหูฟัง (Headphones) */}
                         {isMe && (
-                           <button onClick={toggleSpeaker} className="ml-1 text-[#5A2D0C] hover:scale-110" title="Toggle Sound">
+                           <button onClick={() => setIsSpeakerOn(!isSpeakerOn)} className="ml-1 text-[#5A2D0C] hover:scale-110" title="Toggle Sound">
                               {isSpeakerOn ? <Headphones size={14}/> : <HeadphoneOff size={14} className="text-red-500"/>}
                            </button>
                         )}
                      </div>
-
-                     {/* แก้ 4: ขยับตำแหน่งมงกุฏขึ้น (-top-5) และซ้าย (-left-3) พร้อมใส่ z-20 ให้ลอยเหนือทุกอย่าง */}
                      {p.id === room.host_id && (
                         <div className="absolute -top-5 -left-3 z-20 drop-shadow-lg filter">
                            <Crown className="text-yellow-500 fill-yellow-400 w-8 h-8 animate-pulse-slow"/>
@@ -280,8 +314,6 @@ export default function WaitingRoomPage() {
                   </div>
                 );
               })}
-              
-              {/* Empty Slots (ปรับความสูงให้พอดีกัน) */}
               {[...Array(Math.max(0, room.max_players - players.length))].map((_, i) => (
                  <div key={i} className="w-36 flex-shrink-0 border-2 border-dashed border-[#F4E4BC]/30 rounded-lg flex flex-col items-center justify-center text-[#F4E4BC]/30 font-bold bg-black/20 h-36">
                     <span className="text-4xl mb-2 opacity-50">+</span>
@@ -290,7 +322,6 @@ export default function WaitingRoomPage() {
               ))}
            </div>
 
-           {/* Chat Box (เหมือนเดิม) */}
            <div className="flex-1 bg-[#F4E4BC] rounded-lg border-4 border-[#5A2D0C] flex flex-col shadow-2xl relative">
               <div className="bg-[#5A2D0C] text-[#F4E4BC] px-4 py-2 font-bold text-sm">💬 Party Chat</div>
               <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-[#D4C5A2]/30 flex flex-col">
@@ -312,7 +343,6 @@ export default function WaitingRoomPage() {
               </div>
            </div>
 
-           {/* Start Button */}
            <div className="flex justify-center mt-2">
               {isHost ? (
                 <button onClick={handleStartGame} disabled={!canStart} className={`px-12 py-4 font-bold text-2xl border-4 shadow-lg rounded-lg uppercase tracking-widest transition-all ${canStart ? 'bg-[#8B4513] text-[#F4E4BC] border-[#F4E4BC] hover:scale-105 cursor-pointer shadow-[0_0_15px_rgba(139,69,19,0.5)]' : 'bg-gray-600 text-gray-400 border-gray-500 cursor-not-allowed opacity-80'}`}>
@@ -326,6 +356,6 @@ export default function WaitingRoomPage() {
            </div>
         </div>
       </div>
-    </div>
+    </LiveKitRoom>
   );
 }
