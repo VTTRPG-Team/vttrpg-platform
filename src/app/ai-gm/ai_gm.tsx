@@ -50,7 +50,7 @@ useEffect(() => {
     const channel = supabase
       .channel(`game_chat_${roomId}`)
       .on('postgres_changes', 
-        { event: 'INSERT', schema: 'public', table: 'game_messages', filter: `room_id=eq.${ROOM_ID}` }, 
+        { event: 'INSERT', schema: 'public', table: 'game_messages', filter: `room_id=eq.${roomId}` }, 
         (payload) => {
           const newMsg = payload.new as any;
           setMessages(prev => [...prev, {
@@ -98,7 +98,7 @@ useEffect(() => {
   // --- 4. Logic AI ---
   const askGemini = async (promptText: string, isAutoStart = false) => {
     if (!roomId) return;
-    
+
     if (!isAutoStart) {
       // บันทึกข้อความผู้เล่น (User ID จะถูกดึงใน saveToSupabase)
       await saveToSupabase({ sender: 'Player', text: promptText, type: 'USER', channel: 'AI' });
@@ -143,7 +143,7 @@ useEffect(() => {
         const { count } = await supabase
             .from('game_messages')
             .select('*', { count: 'exact', head: true })
-            .eq('room_id', ROOM_ID);
+            .eq('room_id', roomId);
             
         if (count === 0) {
             askGemini("Act as a Dungeon Master...", true);
