@@ -1,19 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { supabase } from '@/lib/supabase';
+import { useParams } from 'next/navigation';
 
 const API_KEY = "AIzaSyD8LSZbkVBxsAz3YjJDmUczZB97UAw3oak"; 
-const ROOM_ID = "room-1";
-
-type DBMessage = {
-  id: string;
-  room_id: string;
-  sender_name: string;
-  content: string;
-  message_type: 'USER' | 'AI' | 'SYSTEM';
-  channel: 'PARTY' | 'AI';
-  created_at: string;
-};
 
 type UIMessage = {
   sender: string;
@@ -23,6 +13,9 @@ type UIMessage = {
 };
 
 export const ai_gm = () => {
+  const params = useParams();
+  const roomId = params?.id as string;
+
   const [messages, setMessages] = useState<UIMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [currentAiText, setCurrentAiText] = useState("");
@@ -34,8 +27,10 @@ useEffect(() => {
       const { data, error } = await supabase
         .from('game_messages')
         .select('*')
-        .eq('room_id', ROOM_ID)
+        .eq('room_id', roomId)
         .order('created_at', { ascending: true });
+
+      if (error) console.error("Error fetching messages:", error);
       
       if (data) {
         // แปลงจาก DB format เป็น UI format
@@ -53,7 +48,7 @@ useEffect(() => {
 
     // ฟัง Realtime (ใครพิมพ์มาก็เห็นหมด)
     const channel = supabase
-      .channel('game_chat')
+      .channel(`game_chat_${roomId}`)
       .on('postgres_changes', 
         { event: 'INSERT', schema: 'public', table: 'game_messages', filter: `room_id=eq.${ROOM_ID}` }, 
         (payload) => {
@@ -69,28 +64,43 @@ useEffect(() => {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [roomId]);
 
   // --- 2. ฟังก์ชันบันทึกลง Supabase ---
   const saveToSupabase = async (msg: UIMessage) => {
-    await supabase.from('game_messages').insert({
-      room_id: ROOM_ID,
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    let userIdToSave = null;
+    if (msg.type === 'USER' && user) {
+        userIdToSave = user.id;
+    }
+
+    const { error } = await supabase.from('game_messages').insert({
+      room_id: roomId,           // UUID ที่ถูกต้อง
+      user_id: userIdToSave,      // UUID ของ User หรือ Null
       sender_name: msg.sender,
       content: msg.text,
       message_type: msg.type,
       channel: msg.channel,
-      user_id: 'user-uuid-placeholder' // ใส่ ID ผู้เล่นจริงที่นี่ถ้ามี
     });
+
+    if (error) {
+        console.error("Error saving message:", error.message);
+        // อาจจะเพิ่ม UI แจ้งเตือนผู้ใช้ตรงนี้
+    }
   };
 
   // --- 3. ส่งข้อความ Party ---
   const sendPartyMessage = async (text: string) => {
-    // ส่งเข้า DB แล้วรอ Realtime เด้งกลับมาโชว์
     await saveToSupabase({ sender: 'Player', text, type: 'USER', channel: 'PARTY' });
   };
 
+  // --- 4. Logic AI ---
   const askGemini = async (promptText: string, isAutoStart = false) => {
+    if (!roomId) return;
+    
     if (!isAutoStart) {
+      // บันทึกข้อความผู้เล่น (User ID จะถูกดึงใน saveToSupabase)
       await saveToSupabase({ sender: 'Player', text: promptText, type: 'USER', channel: 'AI' });
     }
 
@@ -103,7 +113,6 @@ useEffect(() => {
       const result = await model.generateContent(promptText);
       const text = result.response.text();
 
-      // Typewriter Effect (Local Only - คนอื่นเห็นตอนพิมพ์เสร็จ)
       let i = 0;
       const typingInterval = setInterval(async () => {
         setCurrentAiText(text.substring(0, i));
@@ -113,7 +122,7 @@ useEffect(() => {
           setCurrentAiText(""); 
           setLoading(false);
           
-          // AI คิดเสร็จ -> บันทึกลง DB -> Realtime แจ้งทุกคน
+          // บันทึกข้อความ AI (User ID จะเป็น null)
           await saveToSupabase({ sender: 'AI GM', text, type: 'AI', channel: 'AI' });
         }
       }, 10);
@@ -121,23 +130,27 @@ useEffect(() => {
     } catch (err: any) {
       console.error(err);
       setLoading(false);
-      // Optional: Save error to DB
     }
   };
 
+  // --- 5. Auto Start ---
   useEffect(() => {
-    if (hasInitialized.current) return;
+    if (hasInitialized.current || !roomId) return;
     hasInitialized.current = true;
     
-    // เช็คก่อนว่ามีข้อความในห้องหรือยัง ถ้ายังค่อยให้ AI ทัก
     const checkHistory = async () => {
-        const { count } = await supabase.from('game_messages').select('*', { count: 'exact', head: true }).eq('room_id', ROOM_ID);
+        // ใช้ head: true เพื่อดึงแค่จำนวน ไม่ดึงข้อมูลจริง (ประหยัดเน็ต)
+        const { count } = await supabase
+            .from('game_messages')
+            .select('*', { count: 'exact', head: true })
+            .eq('room_id', ROOM_ID);
+            
         if (count === 0) {
             askGemini("Act as a Dungeon Master...", true);
         }
     };
     checkHistory();
-  }, []);
+  }, [roomId]);
 
   return { messages, loading, currentAiText, askGemini, sendPartyMessage };
 };
