@@ -1,7 +1,53 @@
 'use client'
+import { useState, useEffect } from 'react'
 import { Html } from '@react-three/drei'
+import { supabase } from '@/lib/supabase'
+import { useParams } from 'next/navigation'
+import AIAsset from '@/app/ai-gm/ai_asset'
+
+interface BoardState {
+  imageUrl: string | null;
+  isGenerating: boolean;
+}
 
 export default function TableBoard() {
+  const params = useParams()
+  const roomId = params?.id as string
+  const [boardState, setBoardState] = useState<BoardState>({ 
+    imageUrl: null, 
+    isGenerating: false 
+  })
+
+  useEffect(() => {
+    if (!roomId) return
+    
+    // 1. โหลดข้อมูลครั้งแรก
+    supabase.from('rooms').select('board_image_url, is_image_generating').eq('id', roomId).single()
+      .then(({ data }) => {
+        if (data) {
+            setBoardState({ 
+                imageUrl: data.board_image_url, 
+                isGenerating: data.is_image_generating 
+            })
+        }
+      })
+
+    // 2. ฟัง Realtime การอัปเดตจาก API
+    const channel = supabase.channel(`table_realtime_${roomId}`)
+      .on('postgres_changes', 
+        { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, 
+        (payload: any) => {
+          setBoardState({
+            imageUrl: payload.new.board_image_url,
+            isGenerating: payload.new.is_image_generating
+          })
+        }
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [roomId])
+
   return (
     <group>
       {/* 1. ตัวโต๊ะ */}
@@ -10,24 +56,32 @@ export default function TableBoard() {
         <meshStandardMaterial color="#3d2c1d" />
       </mesh>
 
-      {/* 2. พื้นที่กระดาน (Board) */}
-      <mesh position={[0, 0.06, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[10, 6]} />
-        <meshStandardMaterial color="#222" /> 
-      </mesh>
+      {/* 2. กระดาน AI */}
+      <group position={[0, 0.05, 0]}>
+         <AIAsset imageUrl={boardState.imageUrl} isGenerating={boardState.isGenerating} />
+      </group>
 
-      {/* 3. กรอบเรืองแสง */}
-      <mesh position={[0, 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[10.2, 6.2]} />
-        <meshStandardMaterial color="#fbbf24" emissive="#fbbf24" emissiveIntensity={0.5} />
-      </mesh>
-      
-      {/* 4. ป้ายสถานะลอยเหนือโต๊ะ */}
-      <Html position={[0, 1, 0]} transform occlude>
-        <div className="bg-black/50 text-white px-2 py-1 rounded text-xs select-none pointer-events-none border border-white/20">
-          Waiting for AI Generation...
-        </div>
-      </Html>
+      {/* 3. ป้าย Debug/Loading (แสดงเฉพาะตอนกำลังเจนรูปใหม่) */}
+      {boardState.isGenerating && (
+        <Html position={[0, 1.5, 0]} center transform occlude={false}>
+          <div style={{ 
+            background: 'rgba(0,0,0,0.85)', 
+            color: '#fbbf24', 
+            padding: '12px 20px', 
+            borderRadius: '12px', 
+            fontSize: '14px', 
+            fontWeight: 'bold',
+            border: '2px solid #fbbf24',
+            textAlign: 'center',
+            boxShadow: '0 0 20px rgba(251, 191, 36, 0.4)'
+          }} className="animate-bounce">
+            ✨ AI GM is visualizing...
+            <div style={{ fontSize: '10px', marginTop: '4px', opacity: 0.8, fontWeight: 'normal' }}>
+              Updating game world assets...
+            </div>
+          </div>
+        </Html>
+      )}
     </group>
   )
 }
