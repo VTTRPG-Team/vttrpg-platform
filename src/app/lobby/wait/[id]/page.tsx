@@ -179,8 +179,8 @@ export default function WaitingRoomPage() {
   const myPlayer = players.find(p => p.id === currentUser.id);
   const isMeReady = myPlayer?.isReady || false;
   
-  // Logic ปุ่ม Start: ต้องมีคนมากกว่า 1 และทุกคนต้อง Ready
-  const hasEnoughPlayers = players.length >= 2; 
+  // Logic ปุ่ม Start: ต้องมีอยา่งน้อย 1 และทุกคนต้อง Ready
+  const hasEnoughPlayers = players.length >= 1; 
   const everyoneReady = players.every(p => p.id === room.host_id || p.isReady);
   const canStart = hasEnoughPlayers && everyoneReady;
 
