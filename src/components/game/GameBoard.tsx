@@ -16,6 +16,8 @@ export default function GameBoard() {
         <Stars />
 
         <TableBoard /> 
+
+        <gridHelper args={[50, 50, "#444", "#222"]} position={[0, -1, 0]} />
       </Canvas>
     </div>
   )
