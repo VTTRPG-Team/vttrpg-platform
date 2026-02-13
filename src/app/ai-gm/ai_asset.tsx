@@ -3,54 +3,51 @@ import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
 import { supabase } from '@/lib/supabase'
-import { Html } from '@react-three/drei'
 
 interface AIAssetProps {
   imageUrl: string | null
   isGenerating: boolean
 }
 
+// Component สำหรับแสดงผลบน Canvas
 export default function AIAsset({ imageUrl, isGenerating }: AIAssetProps) {
   const meshRef = useRef<THREE.Mesh>(null)
   const [textureMap, setTextureMap] = useState<THREE.Texture | null>(null)
-  // ✅ เพิ่ม state เช็คว่าโหลด Texture เสร็จจริงๆ หรือยัง
-  const [isTextureLoading, setIsTextureLoading] = useState(false)
 
+  // โหลด Texture
   useEffect(() => {
     if (!imageUrl) {
-        setTextureMap(null)
+        setTextureMap(null) // Reset ถ้าไม่มี URL
         return
     }
 
-    // เมื่อ URL เปลี่ยน หรือเริ่มเจนใหม่ ให้เริ่มโชว์สถานะโหลด
-    setIsTextureLoading(true)
-    console.log("🎨 AIAsset: Start loading texture...")
+    console.log("🎨 AIAsset: Start loading texture...", imageUrl)
 
     const loader = new THREE.TextureLoader()
-    loader.setCrossOrigin('anonymous')
+    loader.setCrossOrigin('anonymous') // สำคัญมากสำหรับรูปข้าม Domain
     
     loader.load(
         imageUrl,
         (tex) => {
+            console.log("✅ Texture Loaded Successfully!")
+            // ตั้งค่าสีให้ถูกต้อง
             tex.colorSpace = THREE.SRGBColorSpace 
+            // tex.minFilter = THREE.LinearFilter // (Optional) ช่วยให้ภาพเนียนขึ้นถ้าขยายใหญ่
             setTextureMap(tex)
-            // ✅ โหลดเสร็จแล้ว ปิดสถานะโหลด
-            setIsTextureLoading(false)
-            console.log("✅ Texture Loaded!")
         },
         undefined, 
         (err) => {
             console.error("❌ Texture Load Failed:", err)
-            setIsTextureLoading(false)
         }
     )
   }, [imageUrl])
 
-  useFrame((state) => {
+  // Effect อนิเมชั่นตอนกำลัง Gen รูป
+  useFrame((state, delta) => {
     if (!meshRef.current) return
     
-    // อนิเมชั่นตอนกำลังรอ (หมุน/ลอย)
-    if (isGenerating || isTextureLoading) {
+    if (isGenerating) {
+        // หมุนเบาๆ + ยกตัวลอยนิดๆ ตอนรอ
         meshRef.current.rotation.z = Math.sin(state.clock.elapsedTime * 3) * 0.05
         meshRef.current.position.y = 0.06 + Math.sin(state.clock.elapsedTime * 5) * 0.02
     } else {
@@ -60,49 +57,41 @@ export default function AIAsset({ imageUrl, isGenerating }: AIAssetProps) {
   })
 
   return (
-    <group>
-      <mesh 
-        ref={meshRef} 
-        position={[0, 0.06, 0]} 
-        rotation={[-Math.PI / 2, 0, 0]} 
-      >
-        <planeGeometry args={[10, 6]} />
-        <meshBasicMaterial 
-          map={textureMap} 
-          color={(isGenerating || isTextureLoading) ? "#333" : "#ffffff"}
-          side={THREE.DoubleSide} 
-          toneMapped={false}
-          transparent={true} 
-        />
-      </mesh>
-
-      {/* ✅ แสดง Debug/Loading เฉพาะตอนที่กำลัง Generating หรือกำลังดาวน์โหลดไฟล์รูป */}
-      {(isGenerating || isTextureLoading) && (
-        <Html position={[0, 1.5, 0]} center transform occlude={false}>
-          <div style={{ 
-            background: 'rgba(0,0,0,0.8)', 
-            color: '#fbbf24', 
-            padding: '8px 16px', 
-            borderRadius: '20px', 
-            fontSize: '14px', 
-            fontWeight: 'bold',
-            border: '1px solid #fbbf24',
-            whiteSpace: 'nowrap'
-          }} className="animate-pulse">
-            {isGenerating ? "✨ AI is thinking..." : "🖼️ Loading Image..."}
-          </div>
-        </Html>
-      )}
-    </group>
+    <mesh 
+      ref={meshRef} 
+      position={[0, 0.06, 0]} 
+      rotation={[-Math.PI / 2, 0, 0]} 
+      receiveShadow
+    >
+      <planeGeometry args={[10, 6]} />
+      
+      {/* ✅ แก้ไข Material ให้แสดงผลชัวร์ที่สุด */}
+      <meshBasicMaterial 
+        map={textureMap} 
+        // ถ้ามี Texture ให้ใช้สีขาว (เพื่อให้เห็นสีจริงของรูป) ถ้าไม่มีให้ใช้สีดำเทา
+        color={isGenerating ? "#333" : (textureMap ? "#ffffff" : "#1a1a1a")}
+        
+        // 1. DoubleSide: ทำให้มองเห็นรูปได้ทั้งหน้าและหลัง (กันเหนียวเรื่องมุมกล้อง)
+        side={THREE.DoubleSide} 
+        
+        // 2. toneMapped={false}: ป้องกันแสงในฉากทำให้รูปสว่างจ้าจนขาว
+        toneMapped={false}
+        
+        // 3. transparent: รองรับพื้นหลังโปร่งใส
+        transparent={true} 
+      />
+    </mesh>
   )
 }
 
-// --- ฟังก์ชันสั่งสร้างรูป ---
+// --- ฟังก์ชันสั่งสร้างรูป (เรียกใช้จาก ai_gm.tsx) ---
 export const generateBoardImage = async (roomId: string, prompt: string) => {
   if (!roomId) return;
   try {
+    // 1. ตั้งสถานะโหลด
     await supabase.from('rooms').update({ is_image_generating: true }).eq('id', roomId)
 
+    // 2. เรียก API
     const res = await fetch('/api/generate-image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -111,8 +100,12 @@ export const generateBoardImage = async (roomId: string, prompt: string) => {
 
     if (!res.ok) throw new Error('API Generate Failed');
 
+    // ไม่ต้องอัปเดต URL ที่นี่ เพราะ API หลังบ้านทำหน้าที่อัปเดต DB แล้ว
+    // และ TableBoard จะได้รับข้อมูลผ่าน Realtime เอง
+
   } catch (error) {
     console.error("Generate Error:", error)
+    // ถ้าพัง ให้ปิดสถานะโหลด
     await supabase.from('rooms').update({ is_image_generating: false }).eq('id', roomId)
   }
 }
