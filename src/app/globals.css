@@ -24,3 +24,59 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ...โค้ดเดิมข้างบนปล่อยไว้... */
+
+@layer utilities {
+  /* Animation: เด้งดึ๋ง */
+  @keyframes bounce-in {
+    0% { 
+      transform: scale(0.3); 
+      opacity: 0; 
+    }
+    50% { 
+      transform: scale(1.05); 
+    }
+    70% { 
+      transform: scale(0.9); 
+    }
+    100% { 
+      transform: scale(1); 
+      opacity: 1; 
+    }
+  }
+
+  .animate-bounce-in {
+    animation: bounce-in 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  }
+  
+  /* Animation: ค่อยๆ ชัด */
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.3s ease-out forwards;
+  }
+}
+/* === Add to src/app/globals.css if not exist === */
+@keyframes pan-slow {
+  0% { transform: scale(1.05) translate(0%, 0%); }
+  50% { transform: scale(1.1) translate(-1%, -1%); }
+  100% { transform: scale(1.05) translate(0%, 0%); }
+}
+.animate-pan-slow { animation: pan-slow 20s ease-in-out infinite alternate; }
+
+@keyframes shine {
+  0% { left: -150%; opacity: 0.5; }
+  100% { left: 150%; opacity: 1; }
+}
+.animate-shine { animation: shine 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+.slanted-shine { transform: skewX(-20deg); }
+
+@keyframes pulse-slow {
+    0%, 100% { opacity: 1; filter: brightness(1); }
+    50% { opacity: 0.8; filter: brightness(1.2); }
+}
+.animate-pulse-slow { animation: pulse-slow 4s ease-in-out infinite; }

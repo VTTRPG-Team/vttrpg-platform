@@ -1,60 +1,71 @@
 import { create } from 'zustand'
 
-// --- Types Definition ---
+// --- Types Definitions ---
 export type MessageType = 'USER' | 'SYSTEM' | 'AI';
 export type ChatTab = 'PARTY' | 'AI_GM';
-export type ChatChannel = 'PARTY' | 'AI'; // ตัวแยกห้องแชท
+export type ChatChannel = 'PARTY' | 'AI';
 export type AiStatus = 'IDLE' | 'PLAYER_TURN' | 'WAITING_OTHERS' | 'THINKING' | 'TYPING';
+export type DiceType = 'D6' | 'D8' | 'D20' | null;
 
 export interface ChatMessage {
   id: string;
   sender: string;
   text: string;
   type: MessageType;
-  channel: ChatChannel; // เพิ่ม field นี้เพื่อระบุว่าข้อความอยู่ห้องไหน
+  channel: ChatChannel;
   timestamp: Date;
 }
 
-interface VoteStatus {
-  isActive: boolean;
-  yesVotes: number;
-  neededVotes: number;
-  isFinished: boolean;
-}
-
+// --- Interface (สเปคของ Store) ---
 interface GameState {
-  // --- View Control ---
+  // 1. View
   viewMode: 'PERSPECTIVE' | 'TOP_DOWN';
   toggleView: () => void;
 
-  // --- Chat System ---
+  // 2. Chat
   activeTab: ChatTab;
   setActiveTab: (tab: ChatTab) => void;
   messages: ChatMessage[];
-  // เพิ่ม channel parameter (default = PARTY)
   addMessage: (sender: string, text: string, type?: MessageType, channel?: ChatChannel) => void;
 
-  // --- AI & Turn System ---
+  // 3. AI Logic
   aiStatus: AiStatus;
   turnCount: number;
   timeLeft: number;
-  waitingFor: string[]; // รายชื่อคนที่ยังไม่ส่ง Action
-
+  waitingFor: string[];
   setAiStatus: (status: AiStatus) => void;
   decrementTime: () => void;
-  submitPlayerAction: (text: string) => void; // ฟังก์ชันส่ง Action แล้วจบเทิร์นเลย
-  mockOthersSubmitting: () => void; // ฟังก์ชันจำลองเพื่อนส่ง
+  submitPlayerAction: (text: string) => void;
+  mockOthersSubmitting: () => void;
 
-  // --- Game Control (Pause/Vote) ---
+  // 4. Game Control
   isPaused: boolean;
-  voteStatus: VoteStatus;
+  voteStatus: {
+    isActive: boolean;
+    yesVotes: number;
+    neededVotes: number;
+    isFinished: boolean;
+  };
   togglePause: () => void;
   startExitVote: () => void;
   castVote: () => void;
   resetVote: () => void;
+
+  // 5. Dice System (แก้ไขใหม่ให้รองรับ Animation)
+  diceState: {
+    isActive: boolean;        // เปิดหน้าต่างเต๋าไหม
+    requiredDice: DiceType;   // เต๋าชนิดไหน
+    isRolling: boolean;       // 3D Physics กำลังทำงาน (ลูกเต๋ากำลังตก)
+    isShowingResult: boolean; // 3D จบแล้ว -> กำลังโชว์ 2D Overlay (NEW)
+    lastResult: number | null;// ผลลัพธ์
+  };
+  
+  triggerDiceRoll: (diceType: DiceType) => void; // เริ่มทอย (สั่ง 3D)
+  completeDiceRoll: (result: number) => void;    // 3D ตกเสร็จแล้ว (รับค่า)
+  closeDiceUI: () => void;                       // ปิด 2D Overlay (NEW)
 }
 
-// --- Store Implementation ---
+// --- Implementation (การทำงานจริง) ---
 export const useGameStore = create<GameState>((set, get) => ({
   // 1. View
   viewMode: 'PERSPECTIVE',
@@ -67,24 +78,18 @@ export const useGameStore = create<GameState>((set, get) => ({
   addMessage: (sender, text, type = 'USER', channel = 'PARTY') => set((state) => ({
     messages: [...state.messages, {
       id: Math.random().toString(36).substr(2, 9),
-      sender, 
-      text, 
-      type, 
-      channel, // บันทึกห้องแชท
-      timestamp: new Date()
+      sender, text, type, channel, timestamp: new Date()
     }]
   })),
 
-  // 3. AI & Turn Logic
+  // 3. AI Logic
   aiStatus: 'PLAYER_TURN',
   turnCount: 0,
   timeLeft: 60,
   waitingFor: [],
-  
   setAiStatus: (status) => set({ aiStatus: status }),
-
+  
   decrementTime: () => set((state) => {
-    // ถ้าหมดเวลาในตาผู้เล่น -> บังคับส่ง
     if (state.timeLeft <= 0 && state.aiStatus === 'PLAYER_TURN') {
        get().submitPlayerAction("(หมดเวลาตอบ)");
        return { timeLeft: 0 };
@@ -93,33 +98,18 @@ export const useGameStore = create<GameState>((set, get) => ({
   }),
 
   submitPlayerAction: (text) => {
-    // 1. บันทึกข้อความลงห้อง AI
     get().addMessage('Player (You)', text, 'USER', 'AI');
-    
-    // 2. เปลี่ยนสถานะเป็นรอเพื่อน
-    set({ 
-      aiStatus: 'WAITING_OTHERS', 
-      waitingFor: ['Player 2', 'Player 3', 'Player 4'] // Mock รายชื่อเพื่อน
-    });
-
-    // 3. เริ่มจำลองเพื่อนส่งข้อความ
+    set({ aiStatus: 'WAITING_OTHERS', waitingFor: ['Player 2', 'Player 3', 'Player 4'] });
     get().mockOthersSubmitting();
   },
 
   mockOthersSubmitting: () => {
-    // Mock: เพื่อนค่อยๆ ทยอยส่ง
-    setTimeout(() => {
-      set((state) => ({ waitingFor: state.waitingFor.filter(p => p !== 'Player 2') }));
-    }, 1500); // 1.5 วินาที
-
-    setTimeout(() => {
-        set((state) => ({ waitingFor: state.waitingFor.filter(p => p !== 'Player 3') }));
-    }, 3000); // 3 วินาที
-
-    setTimeout(() => {
-        set((state) => ({ waitingFor: [] })); // คนสุดท้ายส่งเสร็จ
-        set({ aiStatus: 'THINKING' }); // AI เริ่มคิด
-    }, 4500); // 4.5 วินาที
+    setTimeout(() => { set((state) => ({ waitingFor: state.waitingFor.filter(p => p !== 'Player 2') })) }, 1500);
+    setTimeout(() => { set((state) => ({ waitingFor: state.waitingFor.filter(p => p !== 'Player 3') })) }, 3000);
+    setTimeout(() => { 
+        set((state) => ({ waitingFor: [] })); 
+        set({ aiStatus: 'THINKING' }); 
+    }, 4500);
   },
 
   // 4. Game Control
@@ -134,11 +124,70 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   castVote: () => set((state) => {
     const newVotes = state.voteStatus.yesVotes + 1;
-    const isFinished = newVotes >= state.voteStatus.neededVotes;
-    return { voteStatus: { ...state.voteStatus, yesVotes: newVotes, isFinished } };
+    return { 
+      voteStatus: { 
+        ...state.voteStatus, 
+        yesVotes: newVotes, 
+        isFinished: newVotes >= state.voteStatus.neededVotes 
+      } 
+    };
   }),
   
   resetVote: () => set((state) => ({ 
     voteStatus: { ...state.voteStatus, isActive: false, yesVotes: 0, isFinished: false } 
-  }))
+  })),
+
+
+  // 5. Dice Implementation (แก้ไข Logic ตรงนี้)
+  diceState: {
+    isActive: false,
+    requiredDice: null,
+    isRolling: false,
+    isShowingResult: false, // เพิ่ม state นี้
+    lastResult: null,
+  },
+
+  // สั่งเริ่มทอย: เปิดโหมดทอย และสั่ง isRolling เป็น true (เพื่อ trigger 3D)
+  triggerDiceRoll: (diceType) => {
+    get().addMessage('SYSTEM', `AI requires a ${diceType} roll check!`, 'SYSTEM', 'AI');
+    set({ 
+      diceState: { 
+        isActive: true, 
+        requiredDice: diceType, 
+        isRolling: true,         // เริ่ม Physics 3D
+        isShowingResult: false,  // ยังไม่โชว์ 2D
+        lastResult: null 
+      } 
+    });
+  },
+
+  // จบการทอย 3D: รับค่ามา แล้วสั่งเปิด UI 2D
+  completeDiceRoll: (result) => {
+    const { requiredDice } = get().diceState;
+    
+    // (Optional) ส่งผลลัพธ์เข้า Chat เลย หรือจะรอปิด UI ก่อนก็ได้
+    const resultText = `🎲 Rolled ${requiredDice}: [ ${result} ]`;
+    get().submitPlayerAction(resultText);
+
+    set((state) => ({
+      diceState: { 
+        ...state.diceState, 
+        isRolling: false,        // หยุด Physics 3D
+        isShowingResult: true,   // เปิด UI 2D (เด้ง Overlay)
+        lastResult: result 
+      }
+    }));
+  },
+
+  // สั่งปิด UI ทั้งหมด (เรียกโดย DiceResultOverlay ตอนอนิเมชั่นจบ)
+  closeDiceUI: () => {
+    set((state) => ({
+      diceState: { 
+        ...state.diceState, 
+        isActive: false,        // ปิดทุกอย่าง
+        isShowingResult: false, 
+        lastResult: null 
+      }
+    }));
+  }
 }))
