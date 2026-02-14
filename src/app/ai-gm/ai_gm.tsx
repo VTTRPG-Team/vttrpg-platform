@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from '@/lib/supabase';
 import { useParams } from 'next/navigation';
 import { generateBoardImage } from './ai_asset';
+import PusherClient from 'pusher-js'; // 🌟 นำเข้า Pusher
 
 type UIMessage = {
   id: string;
@@ -24,28 +25,26 @@ export const ai_gm = () => {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [myUsername, setMyUsername] = useState<string>("Player");
 
+  // 🌟 ID ประจำเครื่อง (เอาไว้เช็คว่าข้อความนี้เราเป็นคนพิมพ์เองหรือเปล่า จะได้ไม่เด้งซ้ำ)
+  const localClientId = useRef(Math.random().toString(36).substring(7)).current;
+
   useEffect(() => {
     const getUserInfo = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         setCurrentUserId(user.id);
-        
-        // ดึงชื่อจากตาราง profiles (ถ้ามี)
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('username')
-          .eq('id', user.id)
-          .single();
-          
-        if (profile?.username) {
-          setMyUsername(profile.username);
-        }
+        const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single();
+        if (profile?.username) setMyUsername(profile.username);
       }
     };
     getUserInfo();
   }, []);
 
+  // 🌟 โหลดประวัติเก่า + รอรับ Pusher
   useEffect(() => {
+    if (!roomId) return;
+
+    // 1. ดึงข้อความเก่าจาก Database (ทำแค่ตอนเข้าห้องครั้งแรก)
     const fetchMessages = async () => {
       const { data, error } = await supabase
         .from('game_messages')
@@ -56,7 +55,6 @@ export const ai_gm = () => {
       if (error) console.error("Error fetching messages:", error);
       
       if (data) {
-        // แปลงจาก DB format เป็น UI format
         const formatted: UIMessage[] = data.map((m: any) => ({
           id: m.id,
           userId: m.user_id,
@@ -68,67 +66,90 @@ export const ai_gm = () => {
         setMessages(formatted);
       }
     };
-
     fetchMessages();
 
-    // ฟัง Realtime (ใครพิมพ์มาก็เห็นหมด)
-    const channel = supabase
-      .channel(`game_chat_${roomId}`)
-      .on('postgres_changes', 
-        { event: 'INSERT', schema: 'public', table: 'game_messages', filter: `room_id=eq.${roomId}` }, 
-        (payload) => {
-          const newMsg = payload.new as any;
-          setMessages(prev => [...prev, {
-            id: newMsg.id,
-            userId: newMsg.user_id,
-            sender: newMsg.sender_name,
-            text: newMsg.content,
-            type: newMsg.message_type,
-            channel: newMsg.channel
-          }]);
-        }
-      )
-      .subscribe();
+    // 2. ตั้งค่าดักฟัง Pusher (Realtime)
+    const pusher = new PusherClient(process.env.NEXT_PUBLIC_PUSHER_KEY!, {
+      cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
+    });
 
-    return () => { supabase.removeChannel(channel); };
-  }, [roomId]);
-
-  // --- 2. ฟังก์ชันบันทึกลง Supabase ---
-  const saveToSupabase = async (msg: Omit<UIMessage, 'id' | 'userId'>) => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const channel = pusher.subscribe(`room-${roomId}`);
     
-    let userIdToSave = null;
-    if (msg.type === 'USER') {
-        userIdToSave = currentUserId;
-    }
+    channel.bind('party-chat-event', (data: { message: UIMessage, senderId: string }) => {
+      const { message, senderId } = data;
+      
+      // 🚫 ถ้าเป็นข้อความที่เราพิมพ์เอง เมินไปเลย! (เพราะเราอัปเดตจอตัวเองไปแล้ว)
+      if (senderId === localClientId) return;
 
+      // ถ้าเป็นของคนอื่น ให้เอามาต่อท้าย (เช็ค id ซ้ำกันเหนียว)
+      setMessages(prev => {
+        if (prev.some(m => m.id === message.id)) return prev;
+        return [...prev, message];
+      });
+    });
+
+    return () => {
+      pusher.unsubscribe(`room-${roomId}`);
+      pusher.disconnect();
+    };
+  }, [roomId, localClientId]);
+
+  // --- ฟังก์ชันบันทึกลง Supabase (ทำเป็น Background) ---
+  const saveToSupabase = async (msg: Omit<UIMessage, 'id' | 'userId'>) => {
+    const userIdToSave = msg.type === 'USER' ? currentUserId : null;
     const { error } = await supabase.from('game_messages').insert({
-      room_id: roomId,           // UUID ที่ถูกต้อง
-      user_id: userIdToSave,      // UUID ของ User หรือ Null
+      room_id: roomId,
+      user_id: userIdToSave,
       sender_name: msg.sender,
       content: msg.text,
       message_type: msg.type,
       channel: msg.channel,
     });
-
-    if (error) {
-        console.error("Error saving message:", error.message);
-        // อาจจะเพิ่ม UI แจ้งเตือนผู้ใช้ตรงนี้
-    }
+    if (error) console.error("Error saving message:", error.message);
   };
 
-  // --- 3. ส่งข้อความ Party ---
+  // --- 🌟 ส่งข้อความ Party (แบบสายฟ้าแลบ) ---
   const sendPartyMessage = async (text: string) => {
-    await saveToSupabase({ sender: myUsername, text, type: 'USER', channel: 'PARTY' });
+    // 1. สร้าง ID จำลองขึ้นมา
+    const tempId = `temp-${Date.now()}`;
+    const newMsg: UIMessage = { id: tempId, userId: currentUserId, sender: myUsername, text, type: 'USER', channel: 'PARTY' };
+
+    // 2. แปะขึ้นจอตัวเองทันที (Optimistic UI)
+    setMessages(prev => [...prev, newMsg]);
+
+    // 3. ยิง Pusher ไปหาเพื่อนให้จอเพื่อนเด้งตาม
+    try {
+      fetch('/api/pusher/party-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId, message: newMsg, senderId: localClientId })
+      });
+    } catch (err) {
+      console.error("Pusher error:", err);
+    }
+
+    // 4. แอบเซฟลง Database เงียบๆ
+    saveToSupabase({ sender: myUsername, text, type: 'USER', channel: 'PARTY' });
   };
 
-  // --- 4. Logic AI ---
+  // --- Logic AI (เพิ่ม Pusher ให้เพื่อนเห็นข้อความตอนเราคุยกับ AI ด้วย) ---
   const askGemini = async (promptText: string, isAutoStart = false) => {
     if (!roomId) return;
 
     if (!isAutoStart) {
-      // บันทึกข้อความผู้เล่น (User ID จะถูกดึงใน saveToSupabase)
-      await saveToSupabase({ sender: myUsername, text: promptText, type: 'USER', channel: 'AI' });
+      // เอาคำถามเราขึ้นจอก่อน
+      const tempId = `ai-user-${Date.now()}`;
+      const userMsg: UIMessage = { id: tempId, userId: currentUserId, sender: myUsername, text: promptText, type: 'USER', channel: 'AI' };
+      setMessages(prev => [...prev, userMsg]);
+      
+      // ยิงบอกเพื่อนผ่าน Pusher
+      fetch('/api/pusher/party-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId, message: userMsg, senderId: localClientId })
+      });
+
+      saveToSupabase({ sender: myUsername, text: promptText, type: 'USER', channel: 'AI' });
     }
 
     setLoading(true);
@@ -150,8 +171,13 @@ export const ai_gm = () => {
         : `Fantasy RPG Scene: ${promptText}. Context: ${text.slice(0, 150)}...`;
         
       generateBoardImage(roomId, imagePrompt);
+      
       if (isAutoStart) {
-        await saveToSupabase({ sender: 'AI GM', text, type: 'AI', channel: 'AI' });
+        // ... (กรณี Auto Start ก็เซฟและโชว์ไป)
+        const aiMsg: UIMessage = { id: `ai-${Date.now()}`, userId: null, sender: 'AI GM', text, type: 'AI', channel: 'AI' };
+        setMessages(prev => [...prev, aiMsg]);
+        fetch('/api/pusher/party-chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId, message: aiMsg, senderId: localClientId }) });
+        saveToSupabase({ sender: 'AI GM', text, type: 'AI', channel: 'AI' });
       } else {
         let i = 0;
         const typingInterval = setInterval(async () => {
@@ -162,8 +188,17 @@ export const ai_gm = () => {
             setCurrentAiText(""); 
             setLoading(false);
             
-            // บันทึกข้อความ AI (User ID จะเป็น null)
-            await saveToSupabase({ sender: 'AI GM', text, type: 'AI', channel: 'AI' });
+            // 🌟 พอ AI พิมพ์เสร็จปุ๊บ เอาเข้า Message + ยิงบอกเพื่อน
+            const aiMsg: UIMessage = { id: `ai-${Date.now()}`, userId: null, sender: 'AI GM', text, type: 'AI', channel: 'AI' };
+            setMessages(prev => [...prev, aiMsg]);
+            
+            fetch('/api/pusher/party-chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ roomId, message: aiMsg, senderId: localClientId })
+            });
+
+            saveToSupabase({ sender: 'AI GM', text, type: 'AI', channel: 'AI' });
           }
         }, 10);
       }
@@ -173,17 +208,10 @@ export const ai_gm = () => {
     }
   };
 
-  // --- 5. Auto Start ---
   useEffect(() => {
     if (hasInitialized.current || !roomId) return;
-    
     const checkHistory = async () => {
-        // ใช้ head: true เพื่อดึงแค่จำนวน ไม่ดึงข้อมูลจริง (ประหยัดเน็ต)
-        const { count } = await supabase
-            .from('game_messages')
-            .select('*', { count: 'exact', head: true })
-            .eq('room_id', roomId);
-            
+        const { count } = await supabase.from('game_messages').select('*', { count: 'exact', head: true }).eq('room_id', roomId);
         if (count === 0 && !hasInitialized.current) {
             hasInitialized.current = true;
             askGemini("Act as a Dungeon Master. Introduce yourself and the setting...", true);
