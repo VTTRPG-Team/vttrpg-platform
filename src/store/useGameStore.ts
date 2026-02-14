@@ -28,15 +28,19 @@ interface GameState {
   messages: ChatMessage[];
   addMessage: (sender: string, text: string, type?: MessageType, channel?: ChatChannel) => void;
 
-  // 3. AI Logic
+  // 3. AI Logic & Turn Management (🌟 อัปเกรดใหม่)
   aiStatus: AiStatus;
   turnCount: number;
   timeLeft: number;
   waitingFor: string[];
+  playerActions: { playerName: string; action: string }[]; // ตะกร้าเก็บ Action ของทุกคน
+  
   setAiStatus: (status: AiStatus) => void;
   decrementTime: () => void;
-  submitPlayerAction: (text: string) => void;
-  mockOthersSubmitting: () => void;
+  setWaitingFor: (players: string[]) => void; // กำหนดรายชื่อคนในห้องที่ต้องรอ
+  submitPlayerAction: (playerName: string, action: string) => void; // เอา Action ใส่ตะกร้า
+  resetTurn: () => void; // ล้างตะกร้าเตรียมเริ่มเทิร์นใหม่
+  forceAiTurn: () => void; // บังคับให้ AI ตอบเลย
 
   // 4. Game Control
   isPaused: boolean;
@@ -51,18 +55,17 @@ interface GameState {
   castVote: () => void;
   resetVote: () => void;
 
-  // 5. Dice System (แก้ไขใหม่ให้รองรับ Animation)
+  // 5. Dice System
   diceState: {
-    isActive: boolean;        // เปิดหน้าต่างเต๋าไหม
-    requiredDice: DiceType;   // เต๋าชนิดไหน
-    isRolling: boolean;       // 3D Physics กำลังทำงาน (ลูกเต๋ากำลังตก)
-    isShowingResult: boolean; // 3D จบแล้ว -> กำลังโชว์ 2D Overlay (NEW)
-    lastResult: number | null;// ผลลัพธ์
+    isActive: boolean;
+    requiredDice: DiceType;
+    isRolling: boolean;
+    isShowingResult: boolean;
+    lastResult: number | null;
   };
-  
-  triggerDiceRoll: (diceType: DiceType) => void; // เริ่มทอย (สั่ง 3D)
-  completeDiceRoll: (result: number) => void;    // 3D ตกเสร็จแล้ว (รับค่า)
-  closeDiceUI: () => void;                       // ปิด 2D Overlay (NEW)
+  triggerDiceRoll: (diceType: DiceType) => void;
+  completeDiceRoll: (result: number) => void;
+  closeDiceUI: () => void;
 }
 
 // --- Implementation (การทำงานจริง) ---
@@ -82,35 +85,49 @@ export const useGameStore = create<GameState>((set, get) => ({
     }]
   })),
 
-  // 3. AI Logic
+  // 3. AI Logic & Turn Management (🌟 ระบบใหม่ของจริง)
   aiStatus: 'PLAYER_TURN',
   turnCount: 0,
   timeLeft: 60,
   waitingFor: [],
+  playerActions: [], // เริ่มมาตะกร้าว่างเปล่า
+
   setAiStatus: (status) => set({ aiStatus: status }),
   
   decrementTime: () => set((state) => {
-    if (state.timeLeft <= 0 && state.aiStatus === 'PLAYER_TURN') {
-       get().submitPlayerAction("(หมดเวลาตอบ)");
-       return { timeLeft: 0 };
-    }
-    return { timeLeft: state.timeLeft - 1 };
+    return { timeLeft: state.timeLeft > 0 ? state.timeLeft - 1 : 0 };
   }),
 
-  submitPlayerAction: (text) => {
-    get().addMessage('Player (You)', text, 'USER', 'AI');
-    set({ aiStatus: 'WAITING_OTHERS', waitingFor: ['Player 2', 'Player 3', 'Player 4'] });
-    get().mockOthersSubmitting();
-  },
+  // 🌟 เริ่มเทิร์นใหม่: ระบุชื่อทุกคนที่ต้องรอพิมพ์
+  setWaitingFor: (players) => set({ 
+    waitingFor: players, 
+    playerActions: [], 
+    aiStatus: 'PLAYER_TURN',
+    timeLeft: 60 
+  }),
 
-  mockOthersSubmitting: () => {
-    setTimeout(() => { set((state) => ({ waitingFor: state.waitingFor.filter(p => p !== 'Player 2') })) }, 1500);
-    setTimeout(() => { set((state) => ({ waitingFor: state.waitingFor.filter(p => p !== 'Player 3') })) }, 3000);
-    setTimeout(() => { 
-        set((state) => ({ waitingFor: [] })); 
-        set({ aiStatus: 'THINKING' }); 
-    }, 4500);
-  },
+  // 🌟 เมื่อมีคนส่งข้อความ (ทั้งเราและเพื่อน)
+  submitPlayerAction: (playerName, action) => set((state) => {
+    const newActions = [...state.playerActions, { playerName, action }];
+    
+    // 🌟 ใช้ trim() และแปลงเป็นตัวเล็ก เพื่อป้องกันบั๊ก "เคาะเว้นวรรคเกิน" ทำให้รายชื่อไม่ยอมหาย
+    const newWaitingFor = state.waitingFor.filter(
+      p => p.trim().toLowerCase() !== playerName.trim().toLowerCase()
+    );
+    
+    const nextStatus = newWaitingFor.length === 0 ? 'THINKING' : 'WAITING_OTHERS';
+
+    return { 
+      playerActions: newActions, 
+      waitingFor: newWaitingFor, 
+      aiStatus: nextStatus 
+    };
+  }),
+
+  resetTurn: () => set({ playerActions: [], waitingFor: [], aiStatus: 'PLAYER_TURN' }),
+  
+  //บังคับเคลียร์รายชื่อรอ และเปลี่ยนสถานะเป็น AI คิด
+  forceAiTurn: () => set({ waitingFor: [], playerActions: [], aiStatus: 'THINKING' }),
 
   // 4. Game Control
   isPaused: false,
@@ -137,54 +154,53 @@ export const useGameStore = create<GameState>((set, get) => ({
     voteStatus: { ...state.voteStatus, isActive: false, yesVotes: 0, isFinished: false } 
   })),
 
-
-  // 5. Dice Implementation (แก้ไข Logic ตรงนี้)
+  // 5. Dice System 
   diceState: {
     isActive: false,
     requiredDice: null,
     isRolling: false,
-    isShowingResult: false, // เพิ่ม state นี้
+    isShowingResult: false,
     lastResult: null,
   },
 
-  // สั่งเริ่มทอย: เปิดโหมดทอย และสั่ง isRolling เป็น true (เพื่อ trigger 3D)
   triggerDiceRoll: (diceType) => {
+    // 🌟 ระบบเพิ่มข้อความลงแชทอัตโนมัติเมื่อ AI สั่งทอยเต๋า
     get().addMessage('SYSTEM', `AI requires a ${diceType} roll check!`, 'SYSTEM', 'AI');
     set({ 
       diceState: { 
         isActive: true, 
         requiredDice: diceType, 
-        isRolling: true,         // เริ่ม Physics 3D
-        isShowingResult: false,  // ยังไม่โชว์ 2D
+        isRolling: true,         
+        isShowingResult: false,  
         lastResult: null 
       } 
     });
   },
 
-  // จบการทอย 3D: รับค่ามา แล้วสั่งเปิด UI 2D
   completeDiceRoll: (result) => {
     const { requiredDice } = get().diceState;
-    
-    // (Optional) ส่งผลลัพธ์เข้า Chat เลย หรือจะรอปิด UI ก่อนก็ได้
+    // 🌟 ส่งผลลัพธ์การทอยกลับไปให้ AI รู้!
     const resultText = `🎲 Rolled ${requiredDice}: [ ${result} ]`;
-    get().submitPlayerAction(resultText);
+    
+    // อันนี้จะเอาไปใช้ในขั้นตอนหน้า (รอผู้เล่นคนอื่นทอยเสร็จ หรือยิงให้ AI เลย)
+    // ตอนนี้ขอแปะเข้าแชทไปก่อนครับ
+    get().addMessage('SYSTEM', resultText, 'SYSTEM', 'AI');
 
     set((state) => ({
       diceState: { 
         ...state.diceState, 
-        isRolling: false,        // หยุด Physics 3D
-        isShowingResult: true,   // เปิด UI 2D (เด้ง Overlay)
+        isRolling: false,        
+        isShowingResult: true,   
         lastResult: result 
       }
     }));
   },
 
-  // สั่งปิด UI ทั้งหมด (เรียกโดย DiceResultOverlay ตอนอนิเมชั่นจบ)
   closeDiceUI: () => {
     set((state) => ({
       diceState: { 
         ...state.diceState, 
-        isActive: false,        // ปิดทุกอย่าง
+        isActive: false,        
         isShowingResult: false, 
         lastResult: null 
       }
