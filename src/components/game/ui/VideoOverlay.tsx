@@ -10,6 +10,7 @@ import {
 import { Track } from 'livekit-client';
 import { Mic, MicOff, Video as VideoIcon, VideoOff, User, Headphones, HeadphoneOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
 
 // Component ย่อย: โชว์วิดีโอ 1 คน
 const PlayerBubble = ({ participant }: { participant: any }) => {
@@ -21,6 +22,25 @@ const PlayerBubble = ({ participant }: { participant: any }) => {
   const trackRef = tracks.find(t => t.participant.identity === participant.identity);
   const isCamOn = trackRef && !trackRef.publication?.isMuted;
 
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchAvatar = async () => {
+      if (!participant.identity) return;
+      
+      const { data } = await supabase
+        .from('profiles')
+        .select('avatar_url')
+        .eq('id', participant.identity)
+        .single();
+        
+      if (data?.avatar_url) {
+        setAvatarUrl(data.avatar_url);
+      }
+    };
+    fetchAvatar();
+  }, [participant.identity]);
+
   return (
     <div className={`relative w-20 h-20 rounded-full border-4 shadow-lg bg-gray-900 transition-all ${isSpeaking ? 'border-green-400 scale-110 shadow-[0_0_15px_rgba(74,222,128,0.5)]' : 'border-neutral-700'}`}>
        
@@ -29,9 +49,10 @@ const PlayerBubble = ({ participant }: { participant: any }) => {
           {isCamOn && trackRef && isTrackReference(trackRef) ? (
             <VideoTrack 
               trackRef={trackRef} 
-              // --- แก้ตรงนี้: ใส่ transform scale-x-[-1] ให้ทุกคนเลย ไม่ต้องมีเงื่อนไข isMe ---
               className="w-full h-full object-cover transform scale-x-[-1]" 
             />
+          ) : avatarUrl ? (
+            <img src={avatarUrl} alt={participant.name} className="w-full h-full object-cover" />
           ) : (
             <User className="text-gray-500 w-8 h-8" />
           )}
