@@ -75,26 +75,50 @@ export default function GameControls() {
     }
   }, [roomId])
 
-  // 2. เช็คผลโหวต (แก้ Logic เสมอ หรือโหวตครบแล้ว)
+  // 2. เช็คผลโหวต
   useEffect(() => {
     if (!voteActive) return
     
-    // เคส 1: โหวต YES ชนะขาดลอย
+    // เคส 1: โหวต YES ชนะขาดลอย (โหวตออกสำเร็จ)
     if (yesVotes >= neededVotes) {
-      setTimeout(() => {
-        alert("✅ Majority voted YES! Redirecting to Lobby...")
-        setVoteActive(false)
-        router.push('/lobby')
-      }, 500)
-    } 
-    // เคส 2: โหวต NO ชนะขาดลอย OR โหวตครบทุกคนแล้วแต่ YES ไม่ชนะ (เสมอ 1-1 ก็เข้าเคสนี้)
+      // 🌟 สร้างฟังก์ชัน async เพื่อรอให้เซฟเสร็จก่อน ค่อยเด้งออก
+      const saveGameAndExit = async () => {
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          const { data: room } = await supabase.from('rooms').select('host_id').eq('id', roomId).single();
+          
+          if (user && room && user.id === room.host_id) {
+             // 🌟 ลองอัปเดตแค่ status ดูก่อน (ใช้ตัวเล็ก 'saved' ปลอดภัยสุด)
+             const { error } = await supabase.from('rooms').update({ 
+                status: 'saved' 
+             }).eq('id', roomId);
+
+             if (error) {
+                console.error("❌ DB Save Error:", error);
+                alert(`Save Failed! ฐานข้อมูลฟ้องว่า: ${error.message}`);
+                return; // หยุดทำงาน อย่าเพิ่งเด้งเปลี่ยนหน้า
+             }
+          }
+
+          alert("✅ Game Saved successfully! Redirecting to main menu...");
+          setVoteActive(false);
+          router.push('/lobby'); // ไปหน้าล็อบบี้หลัก
+
+        } catch (err: any) {
+          console.error("Save catch error:", err);
+        }
+      };
+
+      saveGameAndExit(); // เรียกใช้งาน
+    }
+    // เคส 2: โหวต NO ชนะขาดลอย OR โหวตครบทุกคนแล้วแต่ YES ไม่ชนะ
     else if (noVotes >= neededVotes || (yesVotes + noVotes === totalPlayers)) {
       setTimeout(() => {
         alert("❌ Vote failed! The adventure continues.")
         setVoteActive(false)
       }, 500)
     }
-  }, [yesVotes, noVotes, neededVotes, totalPlayers, voteActive, router])
+  }, [yesVotes, noVotes, neededVotes, totalPlayers, voteActive, router, roomId])
 
   // --- Actions ---
   const broadcastVote = async (action: string) => {

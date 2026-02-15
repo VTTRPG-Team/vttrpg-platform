@@ -80,7 +80,7 @@ export default function JoinLobbyPage() {
         }
 
         // ไปหน้า Waiting Room
-        router.push(`/lobby/room/${roomId}`);
+        router.push(`/lobby/wait/${roomId}`);
 
     } catch (error: any) {
         alert("Failed to join: " + error.message);
