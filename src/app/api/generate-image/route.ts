@@ -14,31 +14,27 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing prompt or roomId' }, { status: 400 });
     }
 
-    // 1. Clean Prompt: ตัดให้สั้นและเอาอักขระแปลกๆ ออก
-    // ใช้ keywords สั้นๆ เพื่อให้ชัวร์ที่สุด
+    // 🌟 THE FIX: ลบดอกจัน สัญลักษณ์ Markdown และยุบช่องว่าง ป้องกัน URL พัง
     const cleanPrompt = prompt
-        .slice(0, 150) // ลดเหลือ 150 ตัวอักษร
-        .replace(/[^a-zA-Z0-9 ,.-]/g, '') // เอาแค่อักษรอังกฤษ
+        .replace(/[*_~`#]/g, '') // ลบสัญลักษณ์ Markdown ทิ้งให้หมด
+        .replace(/[\n\r]/g, ' ') 
+        .replace(/\s+/g, ' ') 
+        .slice(0, 150) // จำกัดแค่ 150 ตัวอักษร ปลอดภัยแน่นอน
         .trim();
 
     console.log(`Generating: ${cleanPrompt}`);
 
-    // 2. สร้าง URL (แก้ตรงนี้!)
-    // เปลี่ยนจาก pollinations.ai/p/ เป็น image.pollinations.ai/prompt/
     const seed = Math.floor(Math.random() * 1000000);
-    const encodedPrompt = encodeURIComponent(`${cleanPrompt} fantasy art style high quality`);
+    const encodedPrompt = encodeURIComponent(`${cleanPrompt}, fantasy tabletop rpg art style, epic, highly detailed`);
     
-    // ✅ ใช้ Link นี้แทน (เสถียรกว่า)
     const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1280&height=720&seed=${seed}&nologo=true&model=flux`;
 
-    // 3. Fetch รูป
     const imageRes = await fetch(imageUrl, {
         headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)'
         }
     });
 
-    // เช็ค Content-Type
     const contentType = imageRes.headers.get('content-type');
     if (!imageRes.ok || !contentType?.startsWith('image')) {
         const errorText = await imageRes.text();
@@ -51,7 +47,6 @@ export async function POST(req: Request) {
 
     console.log(`Got image size: ${buffer.length} bytes`);
 
-    // 4. Upload to Supabase
     const fileName = `${roomId}/${Date.now()}.jpg`;
 
     const { error: uploadError } = await supabase.storage
@@ -63,7 +58,6 @@ export async function POST(req: Request) {
 
     if (uploadError) throw uploadError;
 
-    // 5. Get Public URL
     const { data: { publicUrl } } = supabase.storage
       .from('game-assets')
       .getPublicUrl(fileName);
@@ -72,17 +66,13 @@ export async function POST(req: Request) {
         .from('rooms')
         .update({ 
             board_image_url: publicUrl,
-            is_image_generating: false  // ปิดสถานะโหลด
+            is_image_generating: false 
         })
         .eq('id', roomId);
 
-    if (dbError) {
-        console.error("DB Update Error:", dbError);
-        throw dbError;
-    }
+    if (dbError) throw dbError;
 
     console.log("Database updated with new image!");
-
     return NextResponse.json({ url: publicUrl });
 
   } catch (error: any) {

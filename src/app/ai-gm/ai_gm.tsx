@@ -118,10 +118,9 @@ export const ai_gm = () => {
 
   const isFetchingRef = useRef(false);
   
-  const triggerAskGemini = async (aggregatedText: string) => {
+  const triggerAskGemini = async (aggregatedText: string, isAutoStart = false) => {
     setLoading(true);
     
-    // 🌟 บอกเพื่อนว่า "ฉันกำลังคุยกับ AI นะ โชว์สถานะ Loading เลย!"
     fetch('/api/pusher/party-chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId, message: { id: 'sys-thinking', text: '', channel: 'AI', type: 'SYSTEM' }, senderId: localClientId, actionType: 'AI_THINKING' }) }).catch(() => {});
 
     try {
@@ -134,6 +133,8 @@ export const ai_gm = () => {
       const data = await response.json();
       let text = data.text;
 
+      if (!text) throw new Error("No text from AI");
+
       let rollRequest = null;
       const rollMatch = text.match(/\[ROLL_REQUEST:(D\d+)\]/i);
       if (rollMatch) {
@@ -141,9 +142,20 @@ export const ai_gm = () => {
         text = text.replace(/\[ROLL_REQUEST:(D\d+)\]/ig, '').trim();
       }
 
+      // เพื่อสั่งให้มันวาดรูป
+      import('./ai_asset').then(({ generateBoardImage }) => {
+          // ลบดอกจันและภาษาไทยจากผู้เล่นออกไป ใช้แค่คำตอบของ AI วาดรูป
+          const cleanText = text.replace(/[*_#]/g, ''); 
+          
+          const imagePrompt = isAutoStart 
+            ? `Fantasy RPG Opening Scene: ${cleanText.slice(0, 150)}`
+            : `Fantasy RPG Scene: ${cleanText.slice(0, 150)}`; 
+          
+          generateBoardImage(roomId, imagePrompt);
+      });
+
       const msgId = `ai-${Date.now()}`;
       
-      // 🌟 สร้าง Message แบบ "เต็มรูปแบบ" ก่อนส่งให้เพื่อน
       const fullAiMessage: UIMessage = {
         id: msgId,
         userId: null,
@@ -197,7 +209,7 @@ export const ai_gm = () => {
         if (count === 0 && !hasInitialized.current) {
             hasInitialized.current = true;
             if (currentUserId === hostId) {
-                triggerAskGemini("Act as a Dungeon Master. Introduce the fantasy setting to the players and ask what they want to do.");
+                triggerAskGemini("Act as a Dungeon Master. Introduce the fantasy setting to the players and ask what they want to do.", true);
             }
         }
     };
