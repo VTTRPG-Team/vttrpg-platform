@@ -96,6 +96,31 @@ export default function CreateLobbyPage() {
     flex items-center gap-2 mb-2 text-[#a1887f] text-sm font-bold uppercase tracking-widest
   `;
 
+  // ฟังก์ชันปลุกชีพห้องเก่า (Load Game)
+  const handleLoadGame = async (gameId: string) => {
+    setLoadingGames(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (user) {
+      // 🌟 THE FIX: ลบเฉพาะลูกตี้เก่า แต่ "ห้ามลบ Host" เด็ดขาด! (ป้องกันฐานข้อมูลลบห้องร้าง)
+      await supabase.from('room_players').delete().eq('room_id', gameId).neq('user_id', user.id);
+      
+      // อัปเดตสถานะ Host ให้กลับไปเป็น Not Ready (เผื่อค้างจากรอบที่แล้ว)
+      const { error: updateErr } = await supabase.from('room_players').update({ is_ready: false }).eq('room_id', gameId).eq('user_id', user.id);
+      
+      // กันเหนียว: ถ้าหา Host ไม่เจอให้ใส่เข้าไปใหม่
+      if (updateErr) {
+         await supabase.from('room_players').insert([{ room_id: gameId, user_id: user.id }]);
+      }
+      
+      // ปลุกชีพห้องให้กลับมาเปิดรับคน
+      await supabase.from('rooms').update({ status: 'waiting' }).eq('id', gameId);
+
+      router.push(`/lobby/wait/${gameId}`);
+    }
+    setLoadingGames(false);
+  };
+
   return (
     <div className={`min-h-screen flex items-center justify-center relative bg-black ${crimson.className}`}>
       
@@ -243,7 +268,7 @@ export default function CreateLobbyPage() {
                   {savedGames.map((game) => (
                     <div 
                       key={game.id} 
-                      onClick={() => router.push(`/lobby/wait/${game.id}`)}
+                      onClick={() => handleLoadGame(game.id)} // 🌟 เปลี่ยนมาเรียกฟังก์ชันที่เราเพิ่งสร้าง
                       className="group p-4 bg-black/40 border border-[#3e2723] rounded hover:border-red-800 hover:bg-red-900/10 cursor-pointer transition-all"
                     >
                       <h3 className="text-lg text-[#F4E4BC] font-bold group-hover:text-red-400">{game.name || 'Untitled Campaign'}</h3>
