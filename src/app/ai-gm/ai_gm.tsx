@@ -27,7 +27,11 @@ export const ai_gm = () => {
       if (user) {
         setCurrentUserId(user.id);
         const { data: prof } = await supabase.from('profiles').select('username').eq('id', user.id).single();
-        if (prof?.username) setMyUsername(prof.username.trim());
+        if (prof?.username) {
+            const name = prof.username.trim();
+            setMyUsername(name);
+            useGameStore.getState().setMyUsername(name); // ให้ Store จำชื่อไว้
+        }
       }
 
       if (roomId) {
@@ -45,9 +49,9 @@ export const ai_gm = () => {
     initData();
   }, [roomId]);
 
-  const processRef = useRef((text: string, rollRequest: string | null, msgId: string) => {});
+  const processRef = useRef((text: string, rollRequest: any, msgId: string) => {});
   useEffect(() => {
-    processRef.current = (text: string, rollRequest: string | null, msgId: string) => {
+    processRef.current = (text: string, rollRequest: any, msgId: string) => {
         setLoading(true);
         setCurrentAiText("");
         let i = 0;
@@ -60,7 +64,8 @@ export const ai_gm = () => {
             setLoading(false);
             setMessages(prev => [...prev, { id: msgId, userId: null, sender: 'AI GM', text, type: 'AI', channel: 'AI' }]);
             
-            if (rollRequest) useGameStore.getState().triggerDiceRoll(rollRequest as any);
+            // 🌟 สั่งเด้งเต๋า พร้อมเป้าหมาย
+            if (rollRequest) useGameStore.getState().triggerDiceRoll(rollRequest.type as any, rollRequest.target);
           }
         }, 10);
     };
@@ -82,16 +87,17 @@ export const ai_gm = () => {
       const { message, senderId, actionType, rollRequest } = data;
       if (senderId === localClientId) return; 
 
-      // 🌟 รับคำสั่งให้โชว์ว่า AI กำลังคิด
       if (actionType === 'AI_THINKING' || message?.id === 'sys-thinking') {
          setLoading(true);
+      }
+      else if (actionType === 'AI_ERROR') {
+         setLoading(false); // 🌟 ปลดล็อคจอเพื่อนถ้ามี Error
       }
       else if (actionType === 'AI_RESPONSE') {
         processRef.current(message.text, rollRequest, message.id); 
       } 
-      else if (message && message.text) { // 🌟 กันเหนียว เผื่อ actionType หาย
+      else if (message && message.text) { 
         setMessages(prev => prev.some(m => m.id === message.id) ? prev : [...prev, message]);
-        // ถ้าเป็นเพื่อนพิมพ์ส่ง Action มา ให้เอาใส่ตะกร้าฝั่งเราด้วย
         if (message.channel === 'AI' && message.type === 'USER') {
             useGameStore.getState().submitPlayerAction(message.sender, message.text);
         }
@@ -101,14 +107,10 @@ export const ai_gm = () => {
     return () => { pusher.unsubscribe(`room-${roomId}`); pusher.disconnect(); };
   }, [roomId, localClientId]);
 
-  // คำนวณหาว่าใครยังไม่พิมพ์บ้าง
   const aiMessages = messages.filter(m => m.channel === 'AI');
   let lastAiMsgIndex = -1;
   for (let i = aiMessages.length - 1; i >= 0; i--) {
-      if (aiMessages[i].type === 'AI' || aiMessages[i].sender === 'AI GM') {
-          lastAiMsgIndex = i;
-          break;
-      }
+      if (aiMessages[i].type === 'AI' || aiMessages[i].sender === 'AI GM') { lastAiMsgIndex = i; break; }
   }
   const isGameStarted = lastAiMsgIndex !== -1;
   const currentTurnActions = isGameStarted ? aiMessages.slice(lastAiMsgIndex + 1).filter(m => m.type === 'USER') : [];
@@ -120,7 +122,6 @@ export const ai_gm = () => {
   
   const triggerAskGemini = async (aggregatedText: string, isAutoStart = false) => {
     setLoading(true);
-    
     fetch('/api/pusher/party-chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId, message: { id: 'sys-thinking', text: '', channel: 'AI', type: 'SYSTEM' }, senderId: localClientId, actionType: 'AI_THINKING' }) }).catch(() => {});
 
     try {
@@ -135,43 +136,33 @@ export const ai_gm = () => {
 
       if (!text) throw new Error("No text from AI");
 
+      // 🌟 ดึงชื่อเป้าหมายจากการทอย (ถ้ามี)
       let rollRequest = null;
-      const rollMatch = text.match(/\[ROLL_REQUEST:(D\d+)\]/i);
+      const rollMatch = text.match(/\[ROLL_REQUEST:(D\d+)(?::(.+?))?\]/i);
       if (rollMatch) {
-        rollRequest = rollMatch[1].toUpperCase();
-        text = text.replace(/\[ROLL_REQUEST:(D\d+)\]/ig, '').trim();
+        rollRequest = { type: rollMatch[1].toUpperCase(), target: rollMatch[2] ? rollMatch[2].trim() : 'ALL' };
+        text = text.replace(/\[ROLL_REQUEST:(D\d+)(?::(.+?))?\]/ig, '').trim();
       }
 
-      // เพื่อสั่งให้มันวาดรูป
       import('./ai_asset').then(({ generateBoardImage }) => {
-          // ลบดอกจันและภาษาไทยจากผู้เล่นออกไป ใช้แค่คำตอบของ AI วาดรูป
           const cleanText = text.replace(/[*_#]/g, ''); 
-          
-          const imagePrompt = isAutoStart 
-            ? `Fantasy RPG Opening Scene: ${cleanText.slice(0, 150)}`
-            : `Fantasy RPG Scene: ${cleanText.slice(0, 150)}`; 
-          
+          const imagePrompt = isAutoStart ? `Fantasy RPG Opening Scene: ${cleanText.slice(0, 150)}` : `Fantasy RPG Scene: ${cleanText.slice(0, 150)}`; 
           generateBoardImage(roomId, imagePrompt);
       });
 
       const msgId = `ai-${Date.now()}`;
-      
-      const fullAiMessage: UIMessage = {
-        id: msgId,
-        userId: null,
-        sender: 'AI GM',
-        text: text,
-        type: 'AI',
-        channel: 'AI'
-      };
+      const fullAiMessage: UIMessage = { id: msgId, userId: null, sender: 'AI GM', text: text, type: 'AI', channel: 'AI' };
 
       fetch('/api/pusher/party-chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId, message: fullAiMessage, senderId: localClientId, actionType: 'AI_RESPONSE', rollRequest }) });
-
       processRef.current(text, rollRequest, msgId);
-
       await supabase.from('game_messages').insert({ room_id: roomId, sender_name: 'AI GM', content: text, message_type: 'AI', channel: 'AI' });
 
-    } catch (err) { console.error(err); setLoading(false); }
+    } catch (err) { 
+      console.error(err); 
+      setLoading(false); 
+      // 🌟 ส่งสัญญาณแก้บั๊กค้างให้เพื่อน
+      fetch('/api/pusher/party-chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId, message: { id: 'sys-err', text: '', channel: 'AI', type: 'SYSTEM' }, senderId: localClientId, actionType: 'AI_ERROR' }) }).catch(() => {});
+    }
   };
 
   useEffect(() => {
@@ -195,22 +186,17 @@ export const ai_gm = () => {
     const msg: UIMessage = { id: `ai-usr-${Date.now()}`, userId: currentUserId, sender: myUsername, text, type: 'USER', channel: 'AI' };
     setMessages(prev => [...prev, msg]);
     
-    // 🌟 ส่งแบบเต็มใบ
     fetch('/api/pusher/party-chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId, message: msg, senderId: localClientId, actionType: 'AI_ACTION' }) });
     await supabase.from('game_messages').insert({ room_id: roomId, user_id: currentUserId, sender_name: myUsername, content: text, message_type: 'USER', channel: 'AI' });
   };
 
   useEffect(() => {
     if (hasInitialized.current || !roomId || players.length === 0 || !hostId || !currentUserId) return;
-    
     const checkHistory = async () => {
         const { count } = await supabase.from('game_messages').select('*', { count: 'exact', head: true }).eq('room_id', roomId);
-        
         if (count === 0 && !hasInitialized.current) {
             hasInitialized.current = true;
-            if (currentUserId === hostId) {
-                triggerAskGemini("Act as a Dungeon Master. Introduce the fantasy setting to the players and ask what they want to do.", true);
-            }
+            if (currentUserId === hostId) triggerAskGemini("Act as a Dungeon Master. Introduce the fantasy setting to the players and ask what they want to do.", true);
         }
     };
     checkHistory();

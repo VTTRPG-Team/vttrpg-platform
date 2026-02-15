@@ -17,7 +17,7 @@ export async function POST(req: Request) {
         CRITICAL RULES:
         1. You will receive actions from multiple players at once in the format "PlayerName: Action". You must resolve all their actions together in a cohesive narrative.
         2. Do not play the game for the players. Only describe the environment and the outcomes of their actions.
-        3. DICE ROLLS: If a player attempts something risky or uncertain, request a dice roll by typing exactly: [ROLL_REQUEST:D20] or [ROLL_REQUEST:D8] or [ROLL_REQUEST:D6] on a new line.
+        3. DICE ROLLS: If you need a player to roll a dice (e.g. to attack or dodge), request it by typing exactly: [ROLL_REQUEST:D20:PlayerName] or [ROLL_REQUEST:D8:ALL] on a new line. Do not resolve the action until they provide the dice result.
       `
     });
 
