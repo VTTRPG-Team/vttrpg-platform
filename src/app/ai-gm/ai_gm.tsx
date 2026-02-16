@@ -132,6 +132,7 @@ export const ai_gm = () => {
 
       const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: aggregatedText, history: aiHistory }) });
       const data = await response.json();
+      console.log(`[AI GM] เทิร์นนี้ตอบโดยโมเดล:`, data.modelUsed);
       let text = data.text;
 
       if (!text) throw new Error("No text from AI");
