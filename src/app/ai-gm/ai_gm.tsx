@@ -90,8 +90,8 @@ export const ai_gm = () => {
       if (actionType === 'AI_THINKING' || message?.id === 'sys-thinking') {
          setLoading(true);
       }
-      else if (actionType === 'AI_ERROR') {
-         setLoading(false); // 🌟 ปลดล็อคจอเพื่อนถ้ามี Error
+      else if (actionType === 'AI_ERROR' || message?.id === 'sys-err') { // 🌟 THE FIX: ดักจับ id ด้วย เผื่อบางที actionType หลุด
+         setLoading(false); 
       }
       else if (actionType === 'AI_RESPONSE') {
         processRef.current(message.text, rollRequest, message.id); 
@@ -158,10 +158,35 @@ export const ai_gm = () => {
       await supabase.from('game_messages').insert({ room_id: roomId, sender_name: 'AI GM', content: text, message_type: 'AI', channel: 'AI' });
 
     } catch (err) { 
-      console.error(err); 
+      console.error("AI API Error:", err); 
       setLoading(false); 
-      // 🌟 ส่งสัญญาณแก้บั๊กค้างให้เพื่อน
-      fetch('/api/pusher/party-chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId, message: { id: 'sys-err', text: '', channel: 'AI', type: 'SYSTEM' }, senderId: localClientId, actionType: 'AI_ERROR' }) }).catch(() => {});
+
+      // ==========================================
+      // 🌟 THE FIX: ระบบกู้ชีพ ปลดล็อคหน้าจอทุกคนเวลา AI พัง
+      // ==========================================
+      const errorMsgId = `err-${Date.now()}`;
+      
+      // สร้างข้อความจำลองจาก AI เพื่อแจ้งเตือนว่าเกิด Error
+      const fallbackMsg: UIMessage = { 
+         id: errorMsgId, 
+         userId: null, 
+         sender: 'AI GM', 
+         text: '❌ [System Alert]: The AI connection was interrupted or rate-limited. Please try your action again.', 
+         type: 'AI', 
+         channel: 'AI' 
+      };
+
+      // ยิงไปกระตุกจอเพื่อนผ่าน Pusher (ส่งเป็น AI_RESPONSE เพื่อให้ระบบจบเทิร์น)
+      fetch('/api/pusher/party-chat', { 
+         method: 'POST', 
+         headers: { 'Content-Type': 'application/json' }, 
+         body: JSON.stringify({ roomId, message: fallbackMsg, senderId: localClientId, actionType: 'AI_RESPONSE', rollRequest: null }) 
+      }).catch(() => {});
+
+      // โชว์แอนิเมชันแจ้งเตือนบนจอตัวเองด้วย
+      processRef.current(fallbackMsg.text, null, errorMsgId);
+      
+      // ==========================================
     }
   };
 
