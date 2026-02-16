@@ -8,9 +8,9 @@ export async function POST(req: Request) {
 
     const genAI = new GoogleGenerativeAI(apiKey);
     
-    // 🌟 กลับมาใช้ตัวท็อปตามที่คุณโอมต้องการ!
+    // เปลี่ยนจาก model ที่นี่
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-3-flash-preview", 
+      model: "gemini-2.5-flash", 
       systemInstruction: `
         You are an expert Game Master for a Tabletop RPG.
         Your job is to narrate the scene, react to player actions, and manage the game flow.
