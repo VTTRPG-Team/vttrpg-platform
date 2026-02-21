@@ -20,6 +20,11 @@ export interface PlayerStats {
 }
 
 interface GameState {
+  // 🌟 State สำหรับ Quick Choices
+  quickChoices: string[];
+  setQuickChoices: (choices: string[]) => void;
+  clearQuickChoices: () => void;
+  
   myUsername: string;
   setMyUsername: (name: string) => void;
 
@@ -63,6 +68,12 @@ interface GameState {
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
+  
+  // 🌟 Implementation ของ Quick Choices
+  quickChoices: [],
+  setQuickChoices: (choices) => set({ quickChoices: choices }),
+  clearQuickChoices: () => set({ quickChoices: [] }),
+
   myUsername: '',
   setMyUsername: (name) => set({ myUsername: name }),
 

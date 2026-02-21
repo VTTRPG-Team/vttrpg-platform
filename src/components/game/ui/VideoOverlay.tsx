@@ -251,6 +251,12 @@ export default function VideoOverlay() {
           >
             - ถอนพิษ
           </button>
+          <button 
+            onClick={() => useGameStore.getState().setQuickChoices(['ชักดาบพุ่งเข้าฟันบอส!', 'ร่ายเวทป้องกันให้เพื่อน', 'วิ่งหนีไปตั้งหลักที่มุมห้อง'])} 
+            className="bg-yellow-700 hover:bg-yellow-600 text-white p-1 rounded col-span-2 mt-1"
+          >
+            🔥 โชว์ Quick Choices
+          </button>
         </div>
       </div>
       {/* ========================================== */}
