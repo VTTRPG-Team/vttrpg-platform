@@ -10,8 +10,16 @@ export interface ChatMessage {
   id: string; sender: string; text: string; type: MessageType; channel: ChatChannel; timestamp: Date;
 }
 
+// 🌟 1. เพิ่ม Type สำหรับค่า Stats ของผู้เล่น
+export interface PlayerStats {
+  hp: number;
+  maxHp: number;
+  mana: number;
+  maxMana: number;
+  statuses: string[]; // เช่น ['POISON', 'BURN', 'SHIELD']
+}
+
 interface GameState {
-  // 🌟 เพิ่มการจำชื่อตัวเอง
   myUsername: string;
   setMyUsername: (name: string) => void;
 
@@ -35,16 +43,23 @@ interface GameState {
   voteStatus: { isActive: boolean; yesVotes: number; neededVotes: number; isFinished: boolean; };
   togglePause: () => void; startExitVote: () => void; castVote: () => void; resetVote: () => void;
 
-  // 🌟 อัปเกรด Dice System ให้ส่งแชทได้
+  // Dice System 
   diceState: {
     isActive: boolean; requiredDice: DiceType; targetPlayer: string | null;
     isRolling: boolean; isShowingResult: boolean; lastResult: number | null;
-    pendingSubmit: string | null; // 🌟 ผลเต๋าที่รอส่งเข้าแชท
+    pendingSubmit: string | null; 
   };
   triggerDiceRoll: (diceType: DiceType, targetPlayer?: string | null) => void;
   completeDiceRoll: (result: number) => void;
   clearPendingSubmit: () => void; 
   closeDiceUI: () => void;
+
+  // ==========================================
+  // 🌟 2. เพิ่ม State สำหรับ Player Stats System
+  // ==========================================
+  playerStats: Record<string, PlayerStats>;
+  updatePlayerStat: (username: string, statType: 'hp' | 'mana', amount: number) => void;
+  setPlayerStatus: (username: string, status: string, action: 'add' | 'remove') => void;
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -83,7 +98,6 @@ export const useGameStore = create<GameState>((set, get) => ({
   }),
   resetVote: () => set((state) => ({ voteStatus: { ...state.voteStatus, isActive: false, yesVotes: 0, isFinished: false } })),
 
-  // 🌟 Dice Logic ใหม่
   diceState: { isActive: false, requiredDice: null, targetPlayer: null, isRolling: false, isShowingResult: false, lastResult: null, pendingSubmit: null },
 
   triggerDiceRoll: (diceType, targetPlayer = null) => {
@@ -95,11 +109,49 @@ export const useGameStore = create<GameState>((set, get) => ({
     set((state) => ({
       diceState: { 
         ...state.diceState, isRolling: false, isShowingResult: true, lastResult: result,
-        pendingSubmit: `🎲 Rolled ${requiredDice}: [ ${result} ]` // 🌟 เอาผลยัดใส่ pendingSubmit
+        pendingSubmit: `🎲 Rolled ${requiredDice}: [ ${result} ]`
       }
     }));
   },
 
   clearPendingSubmit: () => set((state) => ({ diceState: { ...state.diceState, pendingSubmit: null } })),
-  closeDiceUI: () => set((state) => ({ diceState: { ...state.diceState, isActive: false, isShowingResult: false, lastResult: null } }))
+  closeDiceUI: () => set((state) => ({ diceState: { ...state.diceState, isActive: false, isShowingResult: false, lastResult: null } })),
+
+  // ==========================================
+  // 🌟 3. Implementation สำหรับ Player Stats System
+  // ==========================================
+  playerStats: {},
+
+  updatePlayerStat: (username, statType, amount) => set((state) => {
+    // ถ้าเพิ่งเข้าห้องมายังไม่มีค่าตั้งต้น ให้สร้างเลือด 100 มานา 50
+    const currentStats = state.playerStats[username] || { hp: 100, maxHp: 100, mana: 50, maxMana: 50, statuses: [] };
+    const maxVal = statType === 'hp' ? currentStats.maxHp : currentStats.maxMana;
+    let newVal = currentStats[statType] + amount;
+    
+    // ล็อคไม่ให้เลือดทะลุหลอด หรือติดลบ
+    if (newVal > maxVal) newVal = maxVal;
+    if (newVal < 0) newVal = 0;
+
+    return {
+      playerStats: {
+        ...state.playerStats,
+        [username]: { ...currentStats, [statType]: newVal }
+      }
+    };
+  }),
+
+  setPlayerStatus: (username, status, action) => set((state) => {
+    const currentStats = state.playerStats[username] || { hp: 100, maxHp: 100, mana: 50, maxMana: 50, statuses: [] };
+    let newStatuses = [...currentStats.statuses];
+
+    if (action === 'add' && !newStatuses.includes(status)) newStatuses.push(status);
+    if (action === 'remove') newStatuses = newStatuses.filter(s => s !== status);
+
+    return {
+      playerStats: {
+        ...state.playerStats,
+        [username]: { ...currentStats, statuses: newStatuses }
+      }
+    };
+  })
 }))
