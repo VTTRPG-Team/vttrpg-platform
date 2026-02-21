@@ -24,6 +24,8 @@ import DiceControls from '@/components/game/ui/DiceControls'
 import DiceResultOverlay from '@/components/game/ui/DiceResultOverlay' 
 import VideoOverlay from '@/components/game/ui/VideoOverlay' // <--- เพิ่ม VideoOverlay
 
+import CursorOverlay from '@/components/player-actions/CursorOverlay' // <--- เพิ่ม CursorOverlay
+
 function PhysicsFloor() {
   const [ref] = usePlane(() => ({ rotation: [-Math.PI / 2, 0, 0], position: [0, 0, 0], type: 'Static' }))
   return <mesh ref={ref as any} visible={false}><planeGeometry args={[20, 20]} /></mesh>
@@ -36,6 +38,9 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   // --- LiveKit Token Logic (NEW) ---
   const [token, setToken] = useState("");
 
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [myUsername, setMyUsername] = useState<string>('Player');
+
   useEffect(() => {
     const fetchToken = async () => {
       // 1. ดึงข้อมูลเราจาก Supabase
@@ -44,6 +49,9 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
       
       const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single();
       const username = profile?.username || 'Player';
+
+      setCurrentUserId(user.id);
+      setMyUsername(username);
 
       // 2. ขอ Token จาก API 
       const res = await fetch(`/api/livekit?room=${id}&username=${username}&userId=${user.id}`);
@@ -97,8 +105,9 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
         </div>
 
         {/* === LAYER 1: UI OVERLAY === */}
-        <div className="absolute inset-0 z-10 pointer-events-none flex flex-col justify-between p-4">
-          
+        <div className="absolute inset-0 z-50 pointer-events-none flex flex-col justify-between p-4">
+          <CursorOverlay roomId={id} currentUserId={currentUserId} myUsername={myUsername} />
+                    
           <DiceResultOverlay />
           
           {/* Header Bar */}
