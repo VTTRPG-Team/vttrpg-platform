@@ -82,20 +82,24 @@ export const ai_gm = () => {
     const channel = pusher.subscribe(`room-${roomId}`);
     
     channel.bind('party-chat-event', (data: any) => {
-      // 🌟 ลบ rollRequest ที่แนบมากับ Pusher ออก
       const { message, senderId, actionType } = data;
       if (senderId === localClientId) return; 
 
+      // 1. AI เริ่มคิด (ล็อคจอเพื่อนๆ)
       if (actionType === 'AI_THINKING' || message?.id === 'sys-thinking') {
          setLoading(true);
       }
-      else if (actionType === 'AI_ERROR' || message?.id === 'sys-err') {
-         setLoading(false); 
+      // 2. ถ้ามี Error จากระบบ
+      else if (actionType === 'AI_ERROR' || message?.id?.startsWith('err-')) {
+         // รันเอฟเฟกต์พิมพ์ข้อความ Error (พอพิมพ์จบมันจะปลดล็อคจอให้เองอัตโนมัติ)
+         if (message?.text) processRef.current(message.text, message.id); 
       }
-      else if (actionType === 'AI_RESPONSE') {
-        // 🌟 ส่งเข้า processRef แค่ text กับ id
+      // 🌟 3. THE FIX: ดักจับเวลา AI ตอบกลับมาให้ชัวร์ 100%
+      // เติมเงื่อนไข (message?.type === 'AI') เข้าไป เผื่อสัญญาณ actionType หายระหว่างทาง
+      else if (actionType === 'AI_RESPONSE' || (message?.type === 'AI' && message?.sender === 'AI GM')) {
         processRef.current(message.text, message.id); 
       } 
+      // 4. ข้อความแชทปกติจากผู้เล่นคนอื่นๆ
       else if (message && message.text) { 
         setMessages(prev => prev.some(m => m.id === message.id) ? prev : [...prev, message]);
         if (message.channel === 'AI' && message.type === 'USER') {
