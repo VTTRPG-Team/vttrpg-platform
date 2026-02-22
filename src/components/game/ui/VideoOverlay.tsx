@@ -39,6 +39,9 @@ function PlayerVideoCard({ p }: { p: Participant }) {
   
   const hpPercent = (stats.hp / stats.maxHp) * 100;
   const manaPercent = (stats.mana / stats.maxMana) * 100;
+  
+  // 🌟 เช็คสถานะความตาย (HP เหลือ 0)
+  const isDead = stats.hp <= 0;
 
   useEffect(() => {
     const fetchAvatar = async () => {
@@ -51,7 +54,9 @@ function PlayerVideoCard({ p }: { p: Participant }) {
 
   return (
     <div className={`relative bg-[#1a0f0a]/90 backdrop-blur-md border-2 rounded-lg shadow-[0_0_15px_rgba(0,0,0,0.8)] overflow-hidden transition-all duration-300 group
-        ${isSpeaking && !isMicMuted ? 'border-green-500 shadow-[0_0_20px_rgba(34,197,94,0.6)] scale-105 z-10' : 'border-[#5d4037] hover:border-[#F4E4BC]/50'}`}>
+        ${isSpeaking && !isMicMuted && !isDead ? 'border-green-500 shadow-[0_0_20px_rgba(34,197,94,0.6)] scale-105 z-10' : 'border-[#5d4037] hover:border-[#F4E4BC]/50'}
+        ${isDead ? 'grayscale opacity-75' : ''}`}> 
+        {/* 👆 ถ้าตาย จะทำให้ทั้งการ์ดเป็นสีเทาและจางลงนิดหน่อย */}
       
       {/* 🌟 ยัด DamageNumbers ล่องหนเอาไว้ตรงนี้ให้ทับหน้าคนพอดี! */}
       <DamageNumbers username={username} />
@@ -70,6 +75,14 @@ function PlayerVideoCard({ p }: { p: Participant }) {
           </div>
         )}
         
+        {/* 💀 โอเวอร์เลย์ตอนตาย แปะทับหน้าไปเลย */}
+        {isDead && (
+          <div className="absolute inset-0 bg-red-950/60 flex flex-col items-center justify-center z-30 backdrop-blur-[2px]">
+            <Skull size={32} className="text-red-500 drop-shadow-[0_0_8px_rgba(255,0,0,0.8)]" />
+            <span className={`${cinzel.className} text-red-500 font-black tracking-widest text-lg drop-shadow-[0_0_8px_rgba(0,0,0,1)]`}>DEAD</span>
+          </div>
+        )}
+
         {/* ไอคอนสถานะอุปกรณ์ */}
         <div className="absolute top-2 right-2 flex gap-1 z-20">
           {isDeafened && (
@@ -81,7 +94,7 @@ function PlayerVideoCard({ p }: { p: Participant }) {
             <div className="bg-red-900/80 p-1 rounded text-white backdrop-blur-sm" title="Muted">
               <MicOff size={12} />
             </div>
-          ) : isSpeaking ? (
+          ) : isSpeaking && !isDead ? (
             <div className="bg-green-600/90 p-1 rounded text-white backdrop-blur-sm animate-pulse">
               <Mic size={12} />
             </div>
@@ -131,8 +144,8 @@ function PlayerVideoCard({ p }: { p: Participant }) {
         )}
       </div>
       
-      {/* เอฟเฟกต์จอแดงเวลาเลือดจะหมด */}
-      {hpPercent <= 20 && hpPercent > 0 && (
+      {/* เอฟเฟกต์จอแดงเวลาเลือดจะหมด (ซ่อนถ้าตายแล้ว) */}
+      {!isDead && hpPercent <= 20 && hpPercent > 0 && (
         <div className="absolute inset-0 border-2 border-red-600 animate-pulse pointer-events-none rounded-lg z-30" />
       )}
     </div>
