@@ -49,9 +49,10 @@ export const ai_gm = () => {
     initData();
   }, [roomId]);
 
-  const processRef = useRef((text: string, rollRequest: any, msgId: string) => {});
+  // 🌟 ลบ rollRequest ออกจาก processRef ตามกิ่ง dev
+  const processRef = useRef((text: string, msgId: string) => {});
   useEffect(() => {
-    processRef.current = (text: string, rollRequest: any, msgId: string) => {
+    processRef.current = (text: string, msgId: string) => {
         setLoading(true);
         setCurrentAiText("");
         let i = 0;
@@ -63,11 +64,6 @@ export const ai_gm = () => {
             setCurrentAiText("");
             setLoading(false);
             setMessages(prev => [...prev, { id: msgId, userId: null, sender: 'AI GM', text, type: 'AI', channel: 'AI' }]);
-            
-            if (rollRequest) {
-              const targets = rollRequest.target && rollRequest.target !== 'ALL' ? [rollRequest.target] : [];
-              useGameStore.getState().triggerDiceRollEvent(rollRequest.type as any, targets);
-            }
           }
         }, 10);
     };
@@ -86,23 +82,27 @@ export const ai_gm = () => {
     const channel = pusher.subscribe(`room-${roomId}`);
     
     channel.bind('party-chat-event', (data: any) => {
-      const { message, senderId, actionType, rollRequest, diceData } = data;
+      // 🌟 นำ diceData จากกิ่ง MainGame2.0 มารวมด้วย
+      const { message, senderId, actionType, diceData } = data;
       if (senderId === localClientId) return; 
 
+      // 1. AI เริ่มคิด (ล็อคจอเพื่อนๆ)
       if (actionType === 'AI_THINKING' || message?.id === 'sys-thinking') {
          setLoading(true);
       }
-      else if (actionType === 'AI_ERROR' || message?.id === 'sys-err') { 
-         setLoading(false); 
+      // 2. ถ้ามี Error จากระบบ (รันเอฟเฟกต์แก้จอค้างตามกิ่ง dev)
+      else if (actionType === 'AI_ERROR' || message?.id?.startsWith('err-')) {
+         if (message?.text) processRef.current(message.text, message.id); 
       }
-      else if (actionType === 'AI_RESPONSE') {
-        processRef.current(message.text, rollRequest, message.id); 
+      // 3. THE FIX: ดักจับเวลา AI ตอบกลับมาให้ชัวร์ 100% (กิ่ง dev)
+      else if (actionType === 'AI_RESPONSE' || (message?.type === 'AI' && message?.sender === 'AI GM')) {
+        processRef.current(message.text, message.id); 
       } 
-      // 🌟 รับคำสั่งปลดล็อค Debug จากเพื่อน
+      // 🌟 รับคำสั่งปลดล็อค Debug จากเพื่อน (กิ่ง MainGame2.0)
       else if (actionType === 'DEBUG_UNLOCK') {
         useGameStore.getState().debugUnlockDice();
       }
-      // 🌟 รับเต๋าจากเพื่อน (อัปเดตใหม่ ให้มี rollId และส่ง isLocal เป็น false)
+      // 🌟 รับเต๋าจากเพื่อน (อัปเดตใหม่ ให้มี rollId และส่ง isLocal เป็น false) (กิ่ง MainGame2.0)
       else if (actionType === 'DICE_ROLL' && diceData) {
         useGameStore.getState().addDiceRoll(
            diceData.rollId, 
@@ -113,6 +113,7 @@ export const ai_gm = () => {
            false // <--- จุดสำคัญที่ทำให้ปุ่มทอยเราไม่โดนล็อคเวลาเพื่อนทอย
         );
       }
+      // 4. ข้อความแชทปกติจากผู้เล่นคนอื่นๆ
       else if (message && message.text) { 
         setMessages(prev => prev.some(m => m.id === message.id) ? prev : [...prev, message]);
         if (message.channel === 'AI' && message.type === 'USER') {
@@ -154,15 +155,10 @@ export const ai_gm = () => {
 
       if (!text) throw new Error("No text from AI");
 
-      let rollRequest = null;
-      const rollMatch = text.match(/\[ROLL_REQUEST:(D\d+)(?::(.+?))?\]/i);
-      if (rollMatch) {
-        rollRequest = { type: rollMatch[1].toUpperCase(), target: rollMatch[2] ? rollMatch[2].trim() : 'ALL' };
-        text = text.replace(/\[ROLL_REQUEST:(D\d+)(?::(.+?))?\]/ig, '').trim();
-      }
-
+      // 🌟 เอาการกรอง Roll Request ตรงนี้ออก (ตามกิ่ง dev) ปล่อยให้เป็นหน้าที่ของ tagParser จัดการ
+      // เราจะแค่ทำความสะอาด text สำหรับส่งไปเจนรูปพอ
       import('./ai_asset').then(({ generateBoardImage }) => {
-          const cleanText = text.replace(/[*_#]/g, ''); 
+          const cleanText = text.replace(/\[.*?\]/g, '').replace(/[*_#]/g, ''); // เอาแท็กทั้งหมดใน [] และเครื่องหมาย markdown ออกก่อนส่งไปเจนรูป
           const imagePrompt = isAutoStart ? `Fantasy RPG Opening Scene: ${cleanText.slice(0, 150)}` : `Fantasy RPG Scene: ${cleanText.slice(0, 150)}`; 
           generateBoardImage(roomId, imagePrompt);
       });
@@ -170,8 +166,10 @@ export const ai_gm = () => {
       const msgId = `ai-${Date.now()}`;
       const fullAiMessage: UIMessage = { id: msgId, userId: null, sender: 'AI GM', text: text, type: 'AI', channel: 'AI' };
 
-      fetch('/api/pusher/party-chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId, message: fullAiMessage, senderId: localClientId, actionType: 'AI_RESPONSE', rollRequest }) });
-      processRef.current(text, rollRequest, msgId);
+      // 🌟 เอา rollRequest ออกจาก body ของ fetch
+      fetch('/api/pusher/party-chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId, message: fullAiMessage, senderId: localClientId, actionType: 'AI_RESPONSE' }) });
+      
+      processRef.current(text, msgId);
       await supabase.from('game_messages').insert({ room_id: roomId, sender_name: 'AI GM', content: text, message_type: 'AI', channel: 'AI' });
 
     } catch (err) { 
@@ -179,6 +177,7 @@ export const ai_gm = () => {
       setLoading(false); 
 
       const errorMsgId = `err-${Date.now()}`;
+      
       const fallbackMsg: UIMessage = { 
          id: errorMsgId, 
          userId: null, 
@@ -191,10 +190,11 @@ export const ai_gm = () => {
       fetch('/api/pusher/party-chat', { 
          method: 'POST', 
          headers: { 'Content-Type': 'application/json' }, 
-         body: JSON.stringify({ roomId, message: fallbackMsg, senderId: localClientId, actionType: 'AI_RESPONSE', rollRequest: null }) 
+         body: JSON.stringify({ roomId, message: fallbackMsg, senderId: localClientId, actionType: 'AI_RESPONSE' }) 
       }).catch(() => {});
 
-      processRef.current(fallbackMsg.text, null, errorMsgId);
+      // 🌟 แก้ให้เหลือแค่ 2 พารามิเตอร์ตามกิ่ง dev
+      processRef.current(fallbackMsg.text, errorMsgId);
     }
   };
 

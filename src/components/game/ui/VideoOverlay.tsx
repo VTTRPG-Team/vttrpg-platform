@@ -150,9 +150,6 @@ export default function VideoOverlay() {
   const [isCamOn, setIsCamOn] = useState(true);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
 
-  // 🌟 ดึงฟังก์ชันสำหรับเทสออกมาจาก Store
-  const { updatePlayerStat, setPlayerStatus, myUsername } = useGameStore();
-
   // 🌟 1. คุมเปิด-ปิด ไมค์และกล้อง (จัดการที่เครื่อง Local ไม่ค่อยงอแง)
   useEffect(() => {
     if (!localParticipant) return;
@@ -215,52 +212,6 @@ export default function VideoOverlay() {
            ))}
          </div>
       </div>
-      {/* ========================================== */}
-      {/* 🛠️ GM TEST TOOLS (ลบออกก่อนส่งอาจารย์!) */}
-      {/* ========================================== */}
-      <div className="mt-4 p-2 bg-purple-900/80 border-2 border-purple-500 rounded-lg backdrop-blur-md">
-        <div className="text-xs text-purple-200 font-bold mb-2 text-center">🛠️ Test GM Tools</div>
-        <div className="grid grid-cols-2 gap-1 text-[10px] font-bold">
-          <button 
-            onClick={() => updatePlayerStat(myUsername || 'Unknown', 'hp', -15)} 
-            className="bg-red-700 hover:bg-red-600 text-white p-1 rounded"
-          >
-            -15 HP (โดนตี)
-          </button>
-          <button 
-            onClick={() => updatePlayerStat(myUsername || 'Unknown', 'hp', 20)} 
-            className="bg-green-700 hover:bg-green-600 text-white p-1 rounded"
-          >
-            +20 HP (ฮีล)
-          </button>
-          <button 
-            onClick={() => updatePlayerStat(myUsername || 'Unknown', 'mana', -10)} 
-            className="bg-blue-700 hover:bg-blue-600 text-white p-1 rounded"
-          >
-            -10 Mana (ร่ายเวท)
-          </button>
-          <button 
-            onClick={() => setPlayerStatus(myUsername || 'Unknown', 'POISON', 'add')} 
-            className="bg-purple-700 hover:bg-purple-600 text-white p-1 rounded"
-          >
-            + ติดพิษ
-          </button>
-          <button 
-            onClick={() => setPlayerStatus(myUsername || 'Unknown', 'POISON', 'remove')} 
-            className="bg-gray-700 hover:bg-gray-600 text-white p-1 rounded col-span-2"
-          >
-            - ถอนพิษ
-          </button>
-          <button 
-            onClick={() => useGameStore.getState().setQuickChoices(['ชักดาบพุ่งเข้าฟันบอส!', 'ร่ายเวทป้องกันให้เพื่อน', 'วิ่งหนีไปตั้งหลักที่มุมห้อง'])} 
-            className="bg-yellow-700 hover:bg-yellow-600 text-white p-1 rounded col-span-2 mt-1"
-          >
-            🔥 โชว์ Quick Choices
-          </button>
-        </div>
-      </div>
-      {/* ========================================== */}
-      
     </div>
   );
 }
