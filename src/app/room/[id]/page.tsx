@@ -19,6 +19,9 @@ import DiceControls from '@/components/game/ui/DiceControls'
 import DiceResultOverlay from '@/components/game/ui/DiceResultOverlay' 
 import VideoOverlay from '@/components/game/ui/VideoOverlay'
 
+// 🌟 นำเข้า Environment ที่เราเพิ่งสร้าง
+import Environment from '@/components/game/ui/Environment'
+
 function PhysicsFloor() {
   const [ref] = usePlane(() => ({ rotation: [-Math.PI / 2, 0, 0], position: [0, 0, 0], type: 'Static' }))
   return <mesh ref={ref as any} visible={false}><planeGeometry args={[20, 20]} /></mesh>
@@ -81,17 +84,17 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
            <VideoOverlay />
         </div>
 
-        {/* === LAYER 1: UI OVERLAY (พวกปุ่มควบคุมต่างๆ) === */}
+        {/* === LAYER 1: UI OVERLAY === */}
         <div className="absolute inset-0 z-10 pointer-events-none flex flex-col justify-between p-4">
           <DiceResultOverlay />
           
           <div className="w-full flex justify-between items-start z-50">
-             <div className="bg-black/40 backdrop-blur px-4 py-2 rounded-lg border border-white/10 text-white text-sm font-mono shadow-lg">
+             <div className="bg-black/40 backdrop-blur px-4 py-2 rounded-lg border border-white/10 text-white text-sm font-mono shadow-lg pointer-events-auto">
                ROOM: <span className="text-yellow-400">{id}</span>
              </div>
              
-             <div className="flex items-center gap-3">
-               <button onClick={toggleView} className="pointer-events-auto bg-neutral-800/80 hover:bg-neutral-700 border border-white/20 text-white px-4 py-2 rounded-lg font-bold text-sm transition-all shadow-lg min-w-[140px]">
+             <div className="flex items-center gap-3 pointer-events-auto">
+               <button onClick={toggleView} className="bg-neutral-800/80 hover:bg-neutral-700 border border-white/20 text-white px-4 py-2 rounded-lg font-bold text-sm transition-all shadow-lg min-w-[140px]">
                  {viewMode === 'PERSPECTIVE' ? '👁 View: Table' : '♟ View: Board'}
                </button>
                <GameControls />
@@ -103,7 +106,8 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
           </div>
         </div>
 
-        {/* ✅ งัด ChatInterface ออกมาวางด้านนอกสุด! (ห้ามมี div ขังมันไว้) */}
+        {/* 🌟 วาง Environment และ ChatInterface ตรงนี้ */}
+        <Environment />
         <ChatInterface />
 
       </main>

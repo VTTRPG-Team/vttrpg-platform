@@ -8,14 +8,13 @@ import { useTextToSpeech } from '@/hooks/useTextToSpeech'
 import { VT323 } from 'next/font/google'
 const vt323 = VT323({ subsets: ['latin'], weight: ['400'] });
 
-// 🖼️ 1. พาธรูปภาพ Local ของคุณ (ชื่อไฟล์ต้องไม่เบิ้ล .png นะครับ)
 const PORTRAITS = {
   knight: "/portraits/knight.png", 
   adv1: "/portraits/adv1.png",     
   adv2: "/portraits/adv2.png",     
   magic1: "/portraits/magic1.png", 
   magic2: "/portraits/magic2.png", 
-  default: "/portraits/adv1.png" // ใช้รูปคนถือคบเพลิงเป็นตัวตั้งต้น
+  default: "/portraits/adv1.png" 
 };
 
 const getSmartAvatarUrl = (name: string, storyText: string) => {
@@ -26,18 +25,15 @@ const getSmartAvatarUrl = (name: string, storyText: string) => {
       lowerText.includes('magic') || lowerText.includes('spell') || lowerText.includes('fireball') || lowerText.includes('mana')) {
       return storyText.length % 2 === 0 ? PORTRAITS.magic1 : PORTRAITS.magic2;
   }
-
   if (lowerName.includes('knight') || lowerName.includes('guard') || lowerName.includes('paladin') || 
       lowerText.includes('armor') || lowerText.includes('shield') || lowerText.includes('defend')) {
       return PORTRAITS.knight;
   }
-
   if (lowerName.includes('adventurer') || lowerName.includes('rogue') || lowerName.includes('hero') || 
       lowerText.includes('explore') || lowerText.includes('dungeon') || lowerText.includes('cave') || 
       lowerText.includes('attack') || lowerText.includes('sword') || lowerText.includes('torch')) {
       return storyText.length % 2 === 0 ? PORTRAITS.adv1 : PORTRAITS.adv2;
   }
-
   return PORTRAITS.default;
 }
 
@@ -46,23 +42,69 @@ export default function ChatInterface() {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [actionInput, setActionInput] = useState('');
   const [partyInput, setPartyInput] = useState('');
-  
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const historyBottomRef = useRef<HTMLDivElement>(null);
+  
+  // 🌟 ตัวแปรจำข้อความเก่า เพื่อไม่ให้มันสั่นซ้ำซ้อน
+  const processedStoryRef = useRef<string>('');
 
   const { diceState, clearPendingSubmit } = useGameStore()
   const { speak } = useTextToSpeech();
   const { messages, loading, currentAiText, sendAiAction, sendPartyMessage, currentUserId, waitingFor, hasSubmittedAction, isGameStarted } = ai_gm();
 
+  const isAiBusy = loading || (!isGameStarted && messages.length === 0);
+  
+  const partyMessages = messages.filter(msg => msg.channel === 'PARTY');
+  const aiMessages = messages.filter(msg => msg.channel === 'AI'); 
+  const latestAiMessage = aiMessages.filter(msg => msg.type === 'AI').pop(); 
+
+  const storyText = (isAiBusy && currentAiText) ? currentAiText : (latestAiMessage?.text || "The adventure begins...");
+  const speakerName = latestAiMessage?.sender || "Game Master";
+
+  // =========================================================
+  // 🧠 [ใหม่] ระบบสแกนคำและส่งสัญญาณ FX อัตโนมัติ!
+  // =========================================================
+  useEffect(() => {
+    // ถ้ายกเลิก/ขึ้นประโยคใหม่ ให้ล้างความจำ
+    if (storyText.length < processedStoryRef.current.length) {
+      processedStoryRef.current = '';
+    }
+
+    const lowerText = storyText.toLowerCase();
+    const oldText = processedStoryRef.current.toLowerCase();
+
+    // ฟังก์ชันเช็คว่ามี "คำใหม่" โผล่มาในประโยคไหม
+    const justAppeared = (words: string[]) => words.some(w => lowerText.includes(w) && !oldText.includes(w));
+
+    // 🌪️ เช็คคำที่ทำให้ "สั่นจอ"
+    if (justAppeared(['earthquake', 'shake', 'roar', 'explosion', 'boom', 'rumble', 'แผ่นดินไหว', 'สั่นสะเทือน', 'คำราม', 'ระเบิด'])) {
+      window.dispatchEvent(new CustomEvent('ai-fx', { detail: { action: 'shake' } }));
+    }
+
+    // 🌙 เช็คคำที่ทำให้ "จอมืด"
+    if (justAppeared(['darkness', 'shadows', 'night falls', 'pitch black', 'creepy', 'deep cave', 'ความมืด', 'มืดมิด', 'ค่ำคืน', 'น่ากลัว'])) {
+      window.dispatchEvent(new CustomEvent('ai-fx', { detail: { action: 'dark_on' } }));
+    } 
+    // ☀️ เช็คคำที่ทำให้ "สว่าง"
+    else if (justAppeared(['sunlight', 'bright', 'morning', 'torch', 'illuminates', 'สว่าง', 'แสงแดด', 'คบเพลิง', 'รุ่งเช้า'])) {
+      window.dispatchEvent(new CustomEvent('ai-fx', { detail: { action: 'dark_off' } }));
+    }
+
+    processedStoryRef.current = storyText; // จำข้อความปัจจุบันไว้
+  }, [storyText]);
+
+
+  // =========================================================
+  // UI LOGIC 
+  // =========================================================
   useEffect(() => {
     if (isPartyOpen) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isPartyOpen]);
 
   useEffect(() => {
     if (isHistoryOpen) {
-      setTimeout(() => {
-        historyBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, 100);
+      setTimeout(() => historyBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
     }
   }, [isHistoryOpen, messages]);
 
@@ -72,8 +114,6 @@ export default function ChatInterface() {
         clearPendingSubmit();
     }
   }, [diceState.pendingSubmit]); 
-
-  const isAiBusy = loading || (!isGameStarted && messages.length === 0);
 
   const handleSendAction = (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,13 +129,6 @@ export default function ChatInterface() {
     setPartyInput('');
   }
 
-  const partyMessages = messages.filter(msg => msg.channel === 'PARTY');
-  const aiMessages = messages.filter(msg => msg.channel === 'AI'); 
-  const latestAiMessage = aiMessages.filter(msg => msg.type === 'AI').pop(); 
-
-  const storyText = (isAiBusy && currentAiText) ? currentAiText : (latestAiMessage?.text || "The adventure begins...");
-  const speakerName = latestAiMessage?.sender || "Game Master";
-  
   const speakerAvatar = useMemo(() => {
       return getSmartAvatarUrl(speakerName, storyText);
   }, [speakerName, storyText]);
