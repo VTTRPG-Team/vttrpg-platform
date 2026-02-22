@@ -28,18 +28,24 @@ export default function DiceControl() {
   // 🌟 1. กฎเหล็ก: ถ้าไม่มีคำสั่งทอยจาก AI (requiredDice เป็น null) ซ่อน UI ทันที!
   if (!diceState.requiredDice) return null;
 
-  // 🌟 2. เช็กว่าเป็นตาเราทอยหรือเปล่า? (เผื่อ AI ระบุชื่อคนทอย)
+  // 🌟 2. เช็กว่าเป็นตาเราทอยหรือเปล่า? (รองรับ targetPlayers ที่เป็น Array)
   const isMyTurnToRoll = 
-    !diceState.targetPlayer || 
-    diceState.targetPlayer === 'ALL' || 
-    diceState.targetPlayer.toLowerCase() === myUsername.toLowerCase();
+    !diceState.targetPlayers || 
+    diceState.targetPlayers.length === 0 || 
+    diceState.targetPlayers.includes('ALL') || 
+    diceState.targetPlayers.some(p => p.toLowerCase() === myUsername.toLowerCase());
+
+  // 🌟 3. ดึงสถานะลูกเต๋า "ของตัวเอง" จาก activeRolls มาเช็ก
+  const myRoll = diceState.activeRolls.find(r => r.userId === currentUserId);
+  const isRolling = myRoll?.isRolling || false;
+  const hasRolled = !!myRoll;
 
   // ถ้าเป็นตาเพื่อนทอย เราจะขึ้นป้ายรอเพื่อนแทน
   if (!isMyTurnToRoll) {
     return (
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[100] bg-black/80 px-6 py-3 rounded-full backdrop-blur-md border-2 border-[#5d4037] shadow-[0_0_20px_rgba(0,0,0,0.8)]">
         <span className={`${cinzel.className} text-[#F4E4BC] text-sm animate-pulse`}>
-          Waiting for {diceState.targetPlayer} to roll {diceState.requiredDice}...
+          Waiting for {diceState.targetPlayers?.join(', ') || 'someone'} to roll {diceState.requiredDice}...
         </span>
       </div>
     );
@@ -64,7 +70,8 @@ export default function DiceControl() {
   };
 
   const handleRoll = async () => {
-    if (diceState.isRolling || diceState.isShowingResult || !diceState.canRoll) return;
+    // ใช้ hasRolled แทน เพื่อเช็กว่าเราทอยไปหรือยัง
+    if (hasRolled || !diceState.canRoll) return;
     
     const type = diceState.requiredDice as DiceType;
     let max = 6;
@@ -115,8 +122,8 @@ export default function DiceControl() {
 
       {/* 🎲 ปุ่มกดทอยเต๋า (โชว์เฉพาะตัวที่โดนสั่ง) */}
       <div className="mt-4 relative">
-        {/* Lock Overlay (กันกดซ้ำถ้า canRoll เป็น false) */}
-        {!diceState.canRoll && !diceState.isRolling && !diceState.isShowingResult && (
+        {/* Lock Overlay (กันกดซ้ำถ้า canRoll เป็น false หรือตัวเองทอยไปแล้ว) */}
+        {!diceState.canRoll && !hasRolled && (
            <div className="absolute inset-0 bg-black/60 rounded-2xl flex items-center justify-center z-20 backdrop-blur-[1px]">
               <span className="text-xs text-[#F4E4BC] font-bold uppercase tracking-widest border border-[#F4E4BC] px-2 py-0.5 rounded-sm bg-black/80">Locked</span>
            </div>
@@ -124,10 +131,10 @@ export default function DiceControl() {
 
         <button
           onClick={handleRoll}
-          disabled={!diceState.canRoll || diceState.isRolling || diceState.isShowingResult}
+          disabled={!diceState.canRoll || hasRolled}
           className={`
             relative overflow-hidden group flex flex-col items-center justify-center w-28 h-28 rounded-2xl transition-all duration-300
-            ${!diceState.canRoll || diceState.isRolling ? 'opacity-50 cursor-not-allowed scale-95' : 'hover:scale-110 hover:shadow-[0_0_30px_rgba(244,228,188,0.4)]'}
+            ${!diceState.canRoll || hasRolled ? 'opacity-50 cursor-not-allowed scale-95' : 'hover:scale-110 hover:shadow-[0_0_30px_rgba(244,228,188,0.4)]'}
             bg-gradient-to-br from-[#2a1d15] to-[#1a0f0a] border-4 border-[#5d4037] hover:border-[#F4E4BC] text-[#F4E4BC]
           `}
         >
@@ -138,13 +145,13 @@ export default function DiceControl() {
             {diceState.requiredDice}
           </span>
           <span className="text-[10px] text-[#a1887f] uppercase tracking-widest mt-2 z-10">
-            Click to Roll
+            {hasRolled ? 'Rolled' : 'Click to Roll'}
           </span>
         </button>
       </div>
 
       {/* ⏳ สถานะตอนกำลังกลิ้ง */}
-      {diceState.isRolling && (
+      {isRolling && (
         <div className="text-center mt-2">
             <span className={`${cinzel.className} text-[#F4E4BC] text-sm bg-[#5d4037]/50 px-4 py-1 rounded-full animate-bounce inline-block`}>
                 Rolling the dice...

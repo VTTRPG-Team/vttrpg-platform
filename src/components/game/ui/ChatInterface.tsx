@@ -176,19 +176,16 @@ export default function ChatInterface() {
 
        // 🌟 เช็กว่ามีคำสั่ง "ทอยเต๋า" ไหม? ถ้ามีให้เปิด UI เต๋า
        if (finalParsed.diceRequest) {
-          useGameStore.setState((state) => ({
-            diceState: {
-              ...state.diceState,
-              requiredDice: finalParsed.diceRequest?.type as any, // D6, D8, D20
-              targetPlayer: finalParsed.diceRequest?.target || null, // ชื่อเพื่อน หรือ ALL
-              isRolling: false,
-              isShowingResult: false,
-            }
-          }));
+          useGameStore.getState().triggerDiceRollEvent(
+            finalParsed.diceRequest.type as any,
+            finalParsed.diceRequest.target && finalParsed.diceRequest.target !== 'ALL' 
+              ? [finalParsed.diceRequest.target] 
+              : [] // ถ้าเป็น ALL ให้ส่ง Array เปล่าไป
+          );
           
-          // หยุดเวลานับถอยหลังของ Choice ไว้ก่อน (รอให้ทอยเต๋าเสร็จ)
           stopTensionTimer(); 
-       } 
+       }
+       
        // 🌟 ถ้าไม่มีคำสั่งทอยเต๋า ค่อยเด้งปุ่ม Choice ปกติ
        else if (finalParsed.choices.length > 0) {
           setQuickChoices(finalParsed.choices);
