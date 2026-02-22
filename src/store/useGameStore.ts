@@ -10,17 +10,20 @@ export interface ChatMessage {
   id: string; sender: string; text: string; type: MessageType; channel: ChatChannel; timestamp: Date;
 }
 
-// 🌟 1. เพิ่ม Type สำหรับค่า Stats ของผู้เล่น
 export interface PlayerStats {
-  hp: number;
-  maxHp: number;
-  mana: number;
-  maxMana: number;
-  statuses: string[]; // เช่น ['POISON', 'BURN', 'SHIELD']
+  hp: number; maxHp: number; mana: number; maxMana: number; statuses: string[]; 
+}
+
+export interface DiceRollData {
+  id: string; 
+  userId: string;
+  username: string;
+  diceType: DiceType;
+  result: number;
+  isRolling: boolean;
 }
 
 interface GameState {
-  // 🌟 State สำหรับ Quick Choices
   quickChoices: string[];
   setQuickChoices: (choices: string[]) => void;
   clearQuickChoices: () => void;
@@ -48,20 +51,25 @@ interface GameState {
   voteStatus: { isActive: boolean; yesVotes: number; neededVotes: number; isFinished: boolean; };
   togglePause: () => void; startExitVote: () => void; castVote: () => void; resetVote: () => void;
 
-  // Dice System 
   diceState: {
-    isActive: boolean; requiredDice: DiceType; targetPlayer: string | null;
-    isRolling: boolean; isShowingResult: boolean; lastResult: number | null;
+    isActive: boolean;        
+    canRoll: boolean;         
+    requiredDice: DiceType;   
+    targetPlayers: string[];  
+    activeRolls: DiceRollData[]; 
     pendingSubmit: string | null; 
   };
-  triggerDiceRoll: (diceType: DiceType, targetPlayer?: string | null) => void;
-  completeDiceRoll: (result: number) => void;
+  
+  triggerDiceRollEvent: (diceType: DiceType, targetPlayers?: string[]) => void;
+  
+  // 🌟 เพิ่ม parameter: rollId และ isLocal
+  addDiceRoll: (rollId: string, userId: string, username: string, diceType: DiceType, result: number, isLocal?: boolean) => void;
+  
+  finishDiceRoll: (rollId: string) => void;
+  debugUnlockDice: () => void;
   clearPendingSubmit: () => void; 
-  closeDiceUI: () => void;
+  closeDiceArena: () => void;
 
-  // ==========================================
-  // 🌟 2. เพิ่ม State สำหรับ Player Stats System
-  // ==========================================
   playerStats: Record<string, PlayerStats>;
   updatePlayerStat: (username: string, statType: 'hp' | 'mana', amount: number) => void;
   setPlayerStatus: (username: string, status: string, action: 'add' | 'remove') => void;
@@ -78,8 +86,6 @@ interface GameState {
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
-  
-  // 🌟 Implementation ของ Quick Choices
   quickChoices: [],
   setQuickChoices: (choices) => set({ quickChoices: choices }),
   clearQuickChoices: () => set({ quickChoices: [] }),
@@ -120,28 +126,62 @@ export const useGameStore = create<GameState>((set, get) => ({
   }),
   resetVote: () => set((state) => ({ voteStatus: { ...state.voteStatus, isActive: false, yesVotes: 0, isFinished: false } })),
 
-  diceState: { isActive: false, requiredDice: null, targetPlayer: null, isRolling: false, isShowingResult: false, lastResult: null, pendingSubmit: null },
-
-  triggerDiceRoll: (diceType, targetPlayer = null) => {
-    set({ diceState: { isActive: true, requiredDice: diceType, targetPlayer, isRolling: true, isShowingResult: false, lastResult: null, pendingSubmit: null } });
+  diceState: { 
+    isActive: false, 
+    canRoll: false, 
+    requiredDice: null, 
+    targetPlayers: [], 
+    activeRolls: [], 
+    pendingSubmit: null 
   },
 
-  completeDiceRoll: (result) => {
-    const { requiredDice } = get().diceState;
-    set((state) => ({
-      diceState: { 
-        ...state.diceState, isRolling: false, isShowingResult: true, lastResult: result,
-        pendingSubmit: `🎲 Rolled ${requiredDice}: [ ${result} ]`
+  triggerDiceRollEvent: (diceType, targetPlayers = []) => {
+    set({ diceState: { isActive: true, canRoll: true, requiredDice: diceType, targetPlayers, activeRolls: [], pendingSubmit: null } });
+  },
+
+  // 🌟 จุดแก้บัคสำคัญ
+  addDiceRoll: (rollId, userId, username, diceType, result, isLocal = false) => {
+    set((state) => {
+      // 🌟 กันเต๋าเบิ้ล 2 ลูก: ถ้ามี rollId นี้อยู่แล้ว ให้ข้ามไปเลยไม่ต้องแอดเพิ่ม
+      if (state.diceState.activeRolls.some(r => r.id === rollId)) return state;
+
+      const newRolls = [...state.diceState.activeRolls, { id: rollId, userId, username, diceType, result, isRolling: true }];
+      return { 
+        diceState: { 
+          ...state.diceState, 
+          isActive: true, 
+          // 🌟 กันล็อคปุ่มคนอื่น: ล็อคปุ่มเฉพาะเวลาที่เรากดทอยเอง (isLocal) ถ้าเพื่อนกดมาไม่ต้องล็อค
+          canRoll: isLocal ? false : state.diceState.canRoll, 
+          activeRolls: newRolls 
+        } 
+      };
+    });
+  },
+
+  finishDiceRoll: (rollId) => {
+    set((state) => {
+      const updatedRolls = state.diceState.activeRolls.map(r => 
+        r.id === rollId ? { ...r, isRolling: false } : r
+      );
+      
+      const myRoll = updatedRolls.find(r => r.id === rollId);
+      let pendingText = state.diceState.pendingSubmit;
+      
+      if (myRoll && myRoll.username === get().myUsername) {
+         pendingText = `🎲 Rolled ${myRoll.diceType}: [ ${myRoll.result} ]`;
       }
-    }));
+
+      return { diceState: { ...state.diceState, activeRolls: updatedRolls, pendingSubmit: pendingText } };
+    });
   },
+
+  debugUnlockDice: () => set((state) => ({
+    diceState: { ...state.diceState, isActive: true, canRoll: true, requiredDice: 'D20' }
+  })),
 
   clearPendingSubmit: () => set((state) => ({ diceState: { ...state.diceState, pendingSubmit: null } })),
-  closeDiceUI: () => set((state) => ({ diceState: { ...state.diceState, isActive: false, isShowingResult: false, lastResult: null } })),
+  closeDiceArena: () => set((state) => ({ diceState: { ...state.diceState, isActive: false, activeRolls: [] } })),
 
-  // ==========================================
-  // 🌟 3. Implementation สำหรับ Player Stats System
-  // ==========================================
   playerStats: {},
 
   updatePlayerStat: (username, statType, amount) => set((state) => {
@@ -151,19 +191,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     
     if (newVal > maxVal) newVal = maxVal;
     if (newVal < 0) newVal = 0;
-
-    return {
-      playerStats: {
-        ...state.playerStats,
-        [username]: { ...currentStats, [statType]: newVal }
-      }
-    };
+    return { playerStats: { ...state.playerStats, [username]: { ...currentStats, [statType]: newVal } } };
   }),
 
   setPlayerStatus: (username, status, action) => set((state) => {
     const currentStats = state.playerStats[username] || { hp: 100, maxHp: 100, mana: 50, maxMana: 50, statuses: [] };
     let newStatuses = [...currentStats.statuses];
-
     if (action === 'add' && !newStatuses.includes(status)) newStatuses.push(status);
     if (action === 'remove') newStatuses = newStatuses.filter(s => s !== status);
 

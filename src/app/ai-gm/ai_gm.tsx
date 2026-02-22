@@ -49,7 +49,7 @@ export const ai_gm = () => {
     initData();
   }, [roomId]);
 
-  // 🌟 ลบ rollRequest ออกจาก processRef ให้เหลือแค่ text กับ msgId พอ
+  // 🌟 ลบ rollRequest ออกจาก processRef ตามกิ่ง dev
   const processRef = useRef((text: string, msgId: string) => {});
   useEffect(() => {
     processRef.current = (text: string, msgId: string) => {
@@ -82,23 +82,37 @@ export const ai_gm = () => {
     const channel = pusher.subscribe(`room-${roomId}`);
     
     channel.bind('party-chat-event', (data: any) => {
-      const { message, senderId, actionType } = data;
+      // 🌟 นำ diceData จากกิ่ง MainGame2.0 มารวมด้วย
+      const { message, senderId, actionType, diceData } = data;
       if (senderId === localClientId) return; 
 
       // 1. AI เริ่มคิด (ล็อคจอเพื่อนๆ)
       if (actionType === 'AI_THINKING' || message?.id === 'sys-thinking') {
          setLoading(true);
       }
-      // 2. ถ้ามี Error จากระบบ
+      // 2. ถ้ามี Error จากระบบ (รันเอฟเฟกต์แก้จอค้างตามกิ่ง dev)
       else if (actionType === 'AI_ERROR' || message?.id?.startsWith('err-')) {
-         // รันเอฟเฟกต์พิมพ์ข้อความ Error (พอพิมพ์จบมันจะปลดล็อคจอให้เองอัตโนมัติ)
          if (message?.text) processRef.current(message.text, message.id); 
       }
-      // 🌟 3. THE FIX: ดักจับเวลา AI ตอบกลับมาให้ชัวร์ 100%
-      // เติมเงื่อนไข (message?.type === 'AI') เข้าไป เผื่อสัญญาณ actionType หายระหว่างทาง
+      // 3. THE FIX: ดักจับเวลา AI ตอบกลับมาให้ชัวร์ 100% (กิ่ง dev)
       else if (actionType === 'AI_RESPONSE' || (message?.type === 'AI' && message?.sender === 'AI GM')) {
         processRef.current(message.text, message.id); 
       } 
+      // 🌟 รับคำสั่งปลดล็อค Debug จากเพื่อน (กิ่ง MainGame2.0)
+      else if (actionType === 'DEBUG_UNLOCK') {
+        useGameStore.getState().debugUnlockDice();
+      }
+      // 🌟 รับเต๋าจากเพื่อน (อัปเดตใหม่ ให้มี rollId และส่ง isLocal เป็น false) (กิ่ง MainGame2.0)
+      else if (actionType === 'DICE_ROLL' && diceData) {
+        useGameStore.getState().addDiceRoll(
+           diceData.rollId, 
+           diceData.userId, 
+           diceData.username, 
+           diceData.diceType, 
+           diceData.result, 
+           false // <--- จุดสำคัญที่ทำให้ปุ่มทอยเราไม่โดนล็อคเวลาเพื่อนทอย
+        );
+      }
       // 4. ข้อความแชทปกติจากผู้เล่นคนอื่นๆ
       else if (message && message.text) { 
         setMessages(prev => prev.some(m => m.id === message.id) ? prev : [...prev, message]);
@@ -141,7 +155,7 @@ export const ai_gm = () => {
 
       if (!text) throw new Error("No text from AI");
 
-      // 🌟 เอาการกรอง Roll Request ตรงนี้ออก ปล่อยให้เป็นหน้าที่ของ tagParser จัดการ
+      // 🌟 เอาการกรอง Roll Request ตรงนี้ออก (ตามกิ่ง dev) ปล่อยให้เป็นหน้าที่ของ tagParser จัดการ
       // เราจะแค่ทำความสะอาด text สำหรับส่งไปเจนรูปพอ
       import('./ai_asset').then(({ generateBoardImage }) => {
           const cleanText = text.replace(/\[.*?\]/g, '').replace(/[*_#]/g, ''); // เอาแท็กทั้งหมดใน [] และเครื่องหมาย markdown ออกก่อนส่งไปเจนรูป
@@ -179,6 +193,7 @@ export const ai_gm = () => {
          body: JSON.stringify({ roomId, message: fallbackMsg, senderId: localClientId, actionType: 'AI_RESPONSE' }) 
       }).catch(() => {});
 
+      // 🌟 แก้ให้เหลือแค่ 2 พารามิเตอร์ตามกิ่ง dev
       processRef.current(fallbackMsg.text, errorMsgId);
     }
   };

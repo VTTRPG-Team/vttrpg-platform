@@ -1,109 +1,107 @@
 'use client'
-import { useGameStore, DiceType } from '@/store/useGameStore'
+import { useGameStore, DiceType, DiceRollData } from '@/store/useGameStore'
 import { useEffect, useState } from 'react'
 
-export default function DiceResultOverlay() {
-  const { diceState, closeDiceUI } = useGameStore()
-  
-  // State สำหรับตัวเลขที่วิ่งบนหน้าจอ
+// --- Component ลูกเต๋า 1 ลูก (แยกออกมาเพื่อให้จัดการ Animation ตัวเองได้อิสระ) ---
+function SingleDice({ roll }: { roll: DiceRollData }) {
+  const { finishDiceRoll } = useGameStore()
   const [displayNum, setDisplayNum] = useState<number>(1)
-  const [isAnimating, setIsAnimating] = useState(false)
 
-  // ดักจับเมื่อ Store เปลี่ยนสถานะเป็น isShowingResult (ทอยเสร็จแล้ว)
   useEffect(() => {
-    if (diceState.isShowingResult && diceState.lastResult !== null) {
-      setIsAnimating(true);
-      
-      // --- PHASE 1: Slot Machine (เลขวิ่ง) ---
-      // เริ่มต้นด้วยการสุ่มเลขทันที เพื่อไม่ให้เห็นเลขเก่าหรือเลข 1 ค้าง
-      const initialRandom = Math.floor(Math.random() * (diceState.requiredDice === 'D20' ? 20 : 6)) + 1;
-      setDisplayNum(initialRandom);
-
-      const duration = 600; // ระยะเวลาหมุน (ms)
-      const intervalTime = 50; // ความเร็วในการเปลี่ยนเลข (ms)
-      const startTime = Date.now();
-
-      const spinInterval = setInterval(() => {
-        const elapsed = Date.now() - startTime;
-        
-        if (elapsed < duration) {
-          // ยังหมุนอยู่: สุ่มเลขมั่วๆ ไปเรื่อยๆ
-          let maxVal = 6;
-          if (diceState.requiredDice === 'D8') maxVal = 8;
-          if (diceState.requiredDice === 'D20') maxVal = 20;
-          setDisplayNum(Math.floor(Math.random() * maxVal) + 1);
-        } else {
-          // หมดเวลาหมุน: หยุดที่เลขจริง (สำคัญ!)
-          clearInterval(spinInterval);
-          setDisplayNum(diceState.lastResult!); 
-          setIsAnimating(false); // หยุด Effect เบลอ
-        }
-      }, intervalTime);
-
-      // --- PHASE 2: Auto Close ---
-      // โชว์ผลค้างไว้ 3 วินาที แล้วสั่งปิด
-      const closeTimer = setTimeout(() => {
-        closeDiceUI(); 
-      }, 3600); // 600ms (หมุน) + 3000ms (โชว์)
-
-      return () => {
-        clearInterval(spinInterval);
-        clearTimeout(closeTimer);
-      };
+    if (!roll.isRolling) {
+      setDisplayNum(roll.result);
+      return;
     }
-  }, [diceState.isShowingResult, diceState.lastResult, diceState.requiredDice, closeDiceUI])
 
-  // ถ้า Store บอกว่าไม่ได้โชว์ผล ก็ไม่ต้อง Render อะไรเลย
-  if (!diceState.isShowingResult) return null;
+    // สุ่มเลขเริ่มต้น
+    setDisplayNum(Math.floor(Math.random() * (roll.diceType === 'D20' ? 20 : 6)) + 1);
+    
+    const duration = 800; // หมุน 0.8 วินาที
+    const intervalTime = 50;
+    const startTime = Date.now();
 
-  // --- Style Helpers ---
+    const spinInterval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      if (elapsed < duration) {
+        const maxVal = roll.diceType === 'D8' ? 8 : roll.diceType === 'D20' ? 20 : 6;
+        setDisplayNum(Math.floor(Math.random() * maxVal) + 1);
+      } else {
+        clearInterval(spinInterval);
+        setDisplayNum(roll.result); 
+        finishDiceRoll(roll.id); // บอก Store ว่าลูกนี้หมุนเสร็จแล้ว
+      }
+    }, intervalTime);
+
+    return () => clearInterval(spinInterval);
+  }, [roll.isRolling, roll.result, roll.diceType, roll.id, finishDiceRoll]);
+
   const getShapeClasses = (type: DiceType) => {
     switch (type) {
-      case 'D6': // สี่เหลี่ยม
-        return 'bg-cyan-500 rounded-xl shadow-[0_0_30px_rgba(6,182,212,0.6)] aspect-square';
-      case 'D8': // ข้าวหลามตัด
-        return 'bg-purple-500 shadow-[0_0_30px_rgba(168,85,247,0.6)] [clip-path:polygon(50%_0%,_100%_25%,_100%_75%,_50%_100%,_0%_75%,_0%_25%)] scale-110 aspect-square';
-      case 'D20': // หกเหลี่ยม
-        return 'bg-orange-500 shadow-[0_0_30px_rgba(249,115,22,0.6)] [clip-path:polygon(25%_0%,_75%_0%,_100%_50%,_75%_100%,_25%_100%,_0%_50%)] scale-110 aspect-square';
-      default: 
-        return 'bg-gray-500 rounded-full aspect-square';
+      case 'D6': return 'bg-cyan-500 rounded-xl shadow-[0_0_20px_rgba(6,182,212,0.6)] aspect-square';
+      case 'D8': return 'bg-purple-500 shadow-[0_0_20px_rgba(168,85,247,0.6)] [clip-path:polygon(50%_0%,_100%_25%,_100%_75%,_50%_100%,_0%_75%,_0%_25%)] scale-110 aspect-square';
+      case 'D20': return 'bg-orange-500 shadow-[0_0_20px_rgba(249,115,22,0.6)] [clip-path:polygon(25%_0%,_75%_0%,_100%_50%,_75%_100%,_25%_100%,_0%_50%)] scale-110 aspect-square';
+      default: return 'bg-gray-500 rounded-full aspect-square';
     }
-  }
-
-  const getLabel = (type: DiceType) => {
-      switch (type) {
-          case 'D6': return 'D6 Check';
-          case 'D8': return 'D8 Check';
-          case 'D20': return 'D20 Check';
-          default: return 'Result';
-      }
   }
 
   return (
-    <div className="fixed top-24 left-0 right-0 z-[100] flex flex-col items-center justify-start pointer-events-none animate-bounce-in">
-      
-      {/* Shape Container */}
-      <div className={`
-        relative flex items-center justify-center
-        w-32 h-32 transition-all duration-300
-        ${getShapeClasses(diceState.requiredDice)}
-      `}>
-        {/* Depth Shadow */}
-        <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-black/10 pointer-events-none" />
-        
-        {/* Number Display */}
-        <span className={`
-            font-black text-6xl text-white drop-shadow-md z-10
-            ${isAnimating ? 'blur-[1px] opacity-90' : 'scale-125 transition-transform duration-200'}
-        `}>
+    <div className="flex flex-col items-center gap-3 transition-all duration-500 animate-fade-in">
+      {/* ลูกเต๋า */}
+      <div className={`relative flex items-center justify-center w-24 h-24 sm:w-28 sm:h-28 transition-transform duration-300 ${roll.isRolling ? 'scale-90' : 'scale-100 bounce-end'} ${getShapeClasses(roll.diceType)}`}>
+        <div className="absolute inset-0 bg-gradient-to-b from-white/30 to-black/20 pointer-events-none" />
+        <span className={`font-black text-4xl sm:text-5xl text-white drop-shadow-md z-10 ${roll.isRolling ? 'blur-[1px] opacity-80' : 'scale-110 transition-transform duration-200'}`}>
           {displayNum}
         </span>
       </div>
-
-      {/* Label Badge */}
-      <div className="mt-4 bg-black/80 backdrop-blur-md border border-white/20 text-white px-6 py-2 rounded-full font-bold text-sm tracking-widest uppercase shadow-xl">
-         {getLabel(diceState.requiredDice)}
+      
+      {/* ชื่อคนทอย */}
+      <div className="bg-black/80 backdrop-blur-md border border-white/20 text-white px-3 py-1 rounded-md font-bold text-xs max-w-[120px] truncate shadow-lg">
+        {roll.username}
       </div>
+    </div>
+  )
+}
+
+// --- Main Overlay (ลานประลอง) ---
+export default function DiceResultOverlay() {
+  const { diceState, closeDiceArena } = useGameStore()
+  const { activeRolls, isActive, requiredDice } = diceState
+
+  // ปิดหน้าต่างอัตโนมัติเมื่อทุกคนทอยเสร็จแล้ว
+  useEffect(() => {
+    if (!isActive || activeRolls.length === 0) return;
+
+    const allFinished = activeRolls.every(roll => !roll.isRolling);
+    if (allFinished) {
+      // รอให้ดูผล 3 วินาที แล้วปิดลานเต๋า
+      const timer = setTimeout(() => {
+        closeDiceArena();
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [isActive, activeRolls, closeDiceArena]);
+
+  if (!isActive) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center pointer-events-none bg-black/40 backdrop-blur-[2px] animate-fade-in">
+      
+      {/* หัวข้อบอกว่าทอยอะไรอยู่ */}
+      {requiredDice && (
+        <div className="absolute top-24 bg-gradient-to-r from-transparent via-black/80 to-transparent w-full text-center py-4">
+           <h2 className="text-white text-2xl font-black tracking-widest uppercase drop-shadow-[0_0_10px_rgba(255,255,255,0.5)]">
+             ROLL {requiredDice}
+           </h2>
+        </div>
+      )}
+
+      {/* ลานวางเต๋า (ใช้ Flex wrap เพื่อให้จัดเรียงกึ่งกลางสวยๆ ไม่ว่าจะมีกี่ลูก) */}
+      <div className="flex flex-wrap items-center justify-center gap-6 sm:gap-10 max-w-4xl p-8">
+        {activeRolls.map((roll) => (
+          <SingleDice key={roll.id} roll={roll} />
+        ))}
+      </div>
+      
     </div>
   )
 }

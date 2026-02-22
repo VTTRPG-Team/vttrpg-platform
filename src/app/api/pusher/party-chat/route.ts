@@ -11,10 +11,12 @@ const pusher = new Pusher({
 
 export async function POST(req: Request) {
   try {
-    const { roomId, message, senderId } = await req.json();
+    const body = await req.json();
+    const { roomId } = body;
     
-    // กระจายข้อความแชทไปที่ห้องนั้นๆ
-    await pusher.trigger(`room-${roomId}`, 'party-chat-event', { message, senderId });
+    // 🌟 กระจายข้อมูล "ทั้งหมด" (body) ไปที่ห้องนั้นๆ
+    // พวก actionType, diceData, rollRequest จะได้ไปครบ
+    await pusher.trigger(`room-${roomId}`, 'party-chat-event', body);
     
     return NextResponse.json({ success: true });
   } catch (error) {
