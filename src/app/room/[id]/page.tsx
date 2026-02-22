@@ -22,8 +22,8 @@ import VideoOverlay from '@/components/game/ui/VideoOverlay'
 import Environment from '@/components/game/ui/Environment'
 import AudioEngine from '@/components/game/ui/AudioEngine'
 
-import CursorOverlay from '@/components/player-actions/CursorOverlay' // <--- เพิ่ม CursorOverlay
-import QuickChoices from '@/components/player-actions/QuickChoices' // <--- เพิ่ม QuickChoices
+import CursorOverlay from '@/components/player-actions/CursorOverlay' 
+import QuickChoices from '@/components/player-actions/QuickChoices' 
 
 function PhysicsFloor() {
   const [ref] = usePlane(() => ({ rotation: [-Math.PI / 2, 0, 0], position: [0, 0, 0], type: 'Static' }))
@@ -49,7 +49,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
       setCurrentUserId(user.id);
       setMyUsername(username);
 
-      // 2. ขอ Token จาก API 
       const res = await fetch(`/api/livekit?room=${id}&username=${username}&userId=${user.id}`);
       const data = await res.json();
       setToken(data.token);
@@ -90,16 +89,16 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
         </div>
 
         {/* === LAYER 0.5: PLAYER VIDEOS === */}
-        <div className="absolute top-24 right-6 z-40">
+        <div className="absolute top-24 right-6 z-40 pointer-events-auto">
            <VideoOverlay />
         </div>
 
         {/* === LAYER 1: UI OVERLAY === */}
+        {/* 🌟 ยุบรวม div เหลือแค่อันเดียวแล้ว! */}
         <div className="absolute inset-0 z-50 pointer-events-none flex flex-col justify-between p-4">
+          
           <QuickChoices />
           <CursorOverlay roomId={id} currentUserId={currentUserId} myUsername={myUsername} />
-                    
-        <div className="absolute inset-0 z-10 pointer-events-none flex flex-col justify-between p-4">
           <DiceResultOverlay />
           
           <div className="w-full flex justify-between items-start z-50">
@@ -108,7 +107,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
              </div>
              
              <div className="flex items-center gap-3 pointer-events-auto">
-               {/* 🌟 ย้าย AudioEngine มาวางตรงนี้! (ด้านซ้ายของปุ่ม View: Table) */}
                <AudioEngine />
                
                <button onClick={toggleView} className="bg-neutral-800/80 hover:bg-neutral-700 border border-white/20 text-white px-4 py-2 rounded-lg font-bold text-sm transition-all shadow-lg min-w-[140px]">
@@ -121,11 +119,16 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
           <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 pointer-events-auto z-50">
               <DiceControls />
           </div>
+
+          {/* Chat Interface ไว้ด้านล่างซ้าย (ถ้าโค้ดเดิมซ่อนเข้าออกได้ ก็ยังใช้งานได้ปกติ) */}
+          <div className="absolute bottom-4 left-4 z-50 pointer-events-auto max-h-[50vh]">
+              <ChatInterface />
+          </div>
+
         </div>
 
-        {/* 🌟 วาง Environment และ ChatInterface ตรงนี้ */}
+        {/* 🌟 วาง Environment ไว้หลังสุดเพื่อคลุมจอ */}
         <Environment />
-        <ChatInterface />
 
       </main>
     </LiveKitRoom>
