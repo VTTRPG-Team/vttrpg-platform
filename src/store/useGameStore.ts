@@ -95,6 +95,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     messages: [...state.messages, { id: Math.random().toString(36).substr(2, 9), sender, text, type, channel, timestamp: new Date() }]
   })),
 
+  // หมายเหตุ: timeLeft ตัวนี้เป็นคนละตัวกับ tensionTimeLeft นะครับ (น่าจะใช้กับการจับเวลาเทิร์นหลัก) ผมคงไว้ให้ตามเดิม
   aiStatus: 'PLAYER_TURN', turnCount: 0, timeLeft: 60, waitingFor: [], playerActions: [], 
 
   setAiStatus: (status) => set({ aiStatus: status }),
@@ -172,15 +173,16 @@ export const useGameStore = create<GameState>((set, get) => ({
         [username]: { ...currentStats, statuses: newStatuses }
       }
     };
-  }), // <--- 🌟 แก้ไข: เติมลูกน้ำ (,) ตรงนี้ครับ
+  }),
 
   // 🌟 Implementation ของคุณ
   currentBg: null,
   setCurrentBg: (bg) => set({ currentBg: bg }),
 
+  // 🌟 แก้ไขตรงนี้ครับ เปลี่ยนจาก timeLeft เป็น tensionTimeLeft ให้หมด
   isTimerActive: false,
-  tensionTimeLeft: 10,
-  startTensionTimer: (seconds = 10) => set({ isTimerActive: true, timeLeft: seconds }),
-  stopTensionTimer: () => set({ isTimerActive: false, timeLeft: 0 }),
-  tickTensionTimer: () => set((state) => ({ timeLeft: Math.max(0, state.timeLeft - 1) })),
+  tensionTimeLeft: 0, // ตั้งค่าเริ่มต้นให้เป็น 0
+  startTensionTimer: (seconds = 10) => set({ isTimerActive: true, tensionTimeLeft: seconds }),
+  stopTensionTimer: () => set({ isTimerActive: false, tensionTimeLeft: 0 }),
+  tickTensionTimer: () => set((state) => ({ tensionTimeLeft: Math.max(0, state.tensionTimeLeft - 1) })),
 }))

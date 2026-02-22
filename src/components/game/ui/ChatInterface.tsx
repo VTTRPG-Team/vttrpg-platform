@@ -161,8 +161,7 @@ export default function ChatInterface() {
     }
   }, [parsedData.bg, setCurrentBg]);
 
-  // 4.2 จัดการเลือดและ Choice เมื่อ AI พิมพ์ "เสร็จสิ้น" (isAiBusy เป็น false)
-  // เพื่อป้องกันไม่ให้ปุ่ม Choice เด้งขึ้นมาระหว่างที่ AI ยังพิมพ์เนื้อเรื่องไม่จบ
+  // 4.2 จัดการเลือด Choice และเต๋า เมื่อ AI พิมพ์ "เสร็จสิ้น"
   const processedMsgIdRef = useRef<string>('');
   
   useEffect(() => {
@@ -175,33 +174,56 @@ export default function ChatInterface() {
           updatePlayerStat(myUsername, 'hp', finalParsed.hpChange);
        }
 
-       // เด้งปุ่มตัวเลือกและเริ่มจับเวลา
-       if (finalParsed.choices.length > 0) {
+       // 🌟 เช็กว่ามีคำสั่ง "ทอยเต๋า" ไหม? ถ้ามีให้เปิด UI เต๋า
+       if (finalParsed.diceRequest) {
+          useGameStore.setState((state) => ({
+            diceState: {
+              ...state.diceState,
+              requiredDice: finalParsed.diceRequest?.type as any, // D6, D8, D20
+              targetPlayer: finalParsed.diceRequest?.target || null, // ชื่อเพื่อน หรือ ALL
+              isRolling: false,
+              isShowingResult: false,
+            }
+          }));
+          
+          // หยุดเวลานับถอยหลังของ Choice ไว้ก่อน (รอให้ทอยเต๋าเสร็จ)
+          stopTensionTimer(); 
+       } 
+       // 🌟 ถ้าไม่มีคำสั่งทอยเต๋า ค่อยเด้งปุ่ม Choice ปกติ
+       else if (finalParsed.choices.length > 0) {
           setQuickChoices(finalParsed.choices);
-          startTensionTimer(10); // นับถอยหลัง 10 วิ
+          startTensionTimer(30); // เริ่มนับเวลาถอยหลัง
        }
 
        processedMsgIdRef.current = latestAiMessage.id;
     }
-  }, [isAiBusy, latestAiMessage, myUsername, updatePlayerStat, setQuickChoices, startTensionTimer]);
+  }, [isAiBusy, latestAiMessage, myUsername, updatePlayerStat, setQuickChoices, startTensionTimer, stopTensionTimer]);
+  // =========================================================
+  // 🌟 4.3 ระบบนับถอยหลัง (Timer Countdown) ฉบับแก้เวลาค้าง
+  // =========================================================
 
-  // 4.3 ระบบนับถอยหลัง (Timer Countdown)
+  // ตัวที่ 1: ทำหน้าที่ "ลดเวลา" ทุกๆ 1 วินาทีอย่างเดียว (ไม่สนการรีเรนเดอร์อื่นๆ)
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isTimerActive && tensionTimeLeft > 0) {
-      interval = setInterval(() => tickTensionTimer(), 1000);
-    } else if (isTimerActive && tensionTimeLeft === 0) {
-      // หมดเวลา!
+    // ถ้าไม่ได้เปิดโหมดจับเวลา ให้ข้ามไปเลย
+    if (!isTimerActive) return;
+
+    const intervalId = setInterval(() => {
+      tickTensionTimer(); // สั่งลดเวลาใน Store
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+  }, [isTimerActive, tickTensionTimer]); // 👈 สังเกตว่าเราเอา tensionTimeLeft ออกจากวงเล็บนี้ เพื่อไม่ให้มันโดนรีเซ็ตตัวเอง
+
+  // ตัวที่ 2: ทำหน้าที่ "เช็กว่าเวลาหมดหรือยัง (เหลือ 0)"
+  useEffect(() => {
+    if (isTimerActive && tensionTimeLeft <= 0) {
       stopTensionTimer();
       clearQuickChoices(); // ซ่อนปุ่มเพื่อน
       if (!hasSubmittedAction) {
         sendAiAction("ผู้เล่นลังเล ยืนอึ้งทำอะไรไม่ถูกเพราะหมดเวลาตัดสินใจ!");
       }
     }
-    return () => clearInterval(interval);
-  }, [isTimerActive, tensionTimeLeft, tickTensionTimer, stopTensionTimer, clearQuickChoices, sendAiAction, hasSubmittedAction]);
-
-  // =========================================================
+  }, [isTimerActive, tensionTimeLeft, hasSubmittedAction, stopTensionTimer, clearQuickChoices, sendAiAction]);
 
 
   // =========================================================
@@ -305,8 +327,6 @@ export default function ChatInterface() {
             {isAiBusy && <span className="animate-pulse ml-1 font-bold inline-block w-2.5 h-4 bg-[#3e2723]"></span>}
           </div>
 
-          <QuickChoices />
-          
           <form onSubmit={handleSendAction} className="flex gap-2 w-full mt-auto pt-3 border-t-2 border-[#8B5A2B]/30">
             <input
               type="text"
