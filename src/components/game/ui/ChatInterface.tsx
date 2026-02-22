@@ -4,6 +4,7 @@ import { useGameStore } from '@/store/useGameStore'
 import { ai_gm } from '@/app/ai-gm/ai_gm'
 import { Send, Volume2, MessageSquareText, X, History } from 'lucide-react'
 import { useTextToSpeech } from '@/hooks/useTextToSpeech'
+import { parseAIText } from '@/utils/tagParser'
 
 import { VT323 } from 'next/font/google'
 const vt323 = VT323({ subsets: ['latin'], weight: ['400'] });
@@ -43,12 +44,18 @@ export default function ChatInterface() {
   const [actionInput, setActionInput] = useState('');
   const [partyInput, setPartyInput] = useState('');
 
+  const { 
+    diceState, clearPendingSubmit,
+    myUsername, updatePlayerStat, 
+    setCurrentBg, setQuickChoices, clearQuickChoices,
+    isTimerActive, tensionTimeLeft, startTensionTimer, stopTensionTimer, tickTensionTimer
+  } = useGameStore()
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const historyBottomRef = useRef<HTMLDivElement>(null);
   
   const processedStoryRef = useRef<string>('');
 
-  const { diceState, clearPendingSubmit } = useGameStore()
   const { speak } = useTextToSpeech();
   const { messages, loading, currentAiText, sendAiAction, sendPartyMessage, currentUserId, waitingFor, hasSubmittedAction, isGameStarted } = ai_gm();
 
@@ -60,6 +67,9 @@ export default function ChatInterface() {
 
   const storyText = (isAiBusy && currentAiText) ? currentAiText : (latestAiMessage?.text || "The adventure begins...");
   const speakerName = latestAiMessage?.sender || "Game Master";
+
+  const parsedData = useMemo(() => parseAIText(storyText), [storyText]);
+  const displayStory = parsedData.cleanStory; // <-- เราจะเอาตัวนี้ไปโชว์แทน storyText
 
   // =========================================================
   // 🧠 ระบบสแกนคำและส่งสัญญาณ FX & AUDIO อัตโนมัติ!
@@ -118,6 +128,59 @@ export default function ChatInterface() {
     processedStoryRef.current = storyText; 
   }, [storyText]);
 
+  // =========================================================
+  // 🌟 4. ระบบจัดการ TAGs และ TENSION TIMER
+  // =========================================================
+  
+  // 4.1 อัปเดตพื้นหลังทันทีที่ AI พิมพ์ [BG:...] ออกมา
+  useEffect(() => {
+    if (parsedData.bg) {
+      setCurrentBg(parsedData.bg);
+    }
+  }, [parsedData.bg, setCurrentBg]);
+
+  // 4.2 จัดการเลือดและ Choice เมื่อ AI พิมพ์ "เสร็จสิ้น" (isAiBusy เป็น false)
+  // เพื่อป้องกันไม่ให้ปุ่ม Choice เด้งขึ้นมาระหว่างที่ AI ยังพิมพ์เนื้อเรื่องไม่จบ
+  const processedMsgIdRef = useRef<string>('');
+  
+  useEffect(() => {
+    if (!isAiBusy && latestAiMessage && latestAiMessage.id !== processedMsgIdRef.current) {
+       // ตัดคำจากข้อความที่สมบูรณ์แล้ว
+       const finalParsed = parseAIText(latestAiMessage.text);
+       
+       // หักเลือด/เพิ่มเลือด
+       if (finalParsed.hpChange !== 0 && myUsername) {
+          updatePlayerStat(myUsername, 'hp', finalParsed.hpChange);
+       }
+
+       // เด้งปุ่มตัวเลือกและเริ่มจับเวลา
+       if (finalParsed.choices.length > 0) {
+          setQuickChoices(finalParsed.choices);
+          startTensionTimer(10); // นับถอยหลัง 10 วิ
+       }
+
+       processedMsgIdRef.current = latestAiMessage.id;
+    }
+  }, [isAiBusy, latestAiMessage, myUsername, updatePlayerStat, setQuickChoices, startTensionTimer]);
+
+  // 4.3 ระบบนับถอยหลัง (Timer Countdown)
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isTimerActive && tensionTimeLeft > 0) {
+      interval = setInterval(() => tickTensionTimer(), 1000);
+    } else if (isTimerActive && tensionTimeLeft === 0) {
+      // หมดเวลา!
+      stopTensionTimer();
+      clearQuickChoices(); // ซ่อนปุ่มเพื่อน
+      if (!hasSubmittedAction) {
+        sendAiAction("ผู้เล่นลังเล ยืนอึ้งทำอะไรไม่ถูกเพราะหมดเวลาตัดสินใจ!");
+      }
+    }
+    return () => clearInterval(interval);
+  }, [isTimerActive, tensionTimeLeft, tickTensionTimer, stopTensionTimer, clearQuickChoices, sendAiAction, hasSubmittedAction]);
+
+  // =========================================================
+
 
   // =========================================================
   // UI LOGIC 
@@ -163,6 +226,16 @@ export default function ChatInterface() {
       {/* 1. กล่องเนื้อเรื่อง Stardew Valley */}
       {/* ========================================================= */}
       <div className="fixed top-24 left-6 w-[320px] md:w-[380px] max-h-[75vh] z-[9000] pointer-events-none flex flex-col items-start">
+      {/* 🌟 ป้ายประกาศเวลา Tension Timer */}
+      {isTimerActive && (
+        <div className={`fixed top-12 left-1/2 transform -translate-x-1/2 px-6 py-2 rounded-lg font-bold text-xl md:text-2xl shadow-[4px_4px_0px_rgba(0,0,0,0.8)] z-[9999] border-4 transition-colors ${vt323.className} ${
+          tensionTimeLeft <= 3 
+            ? 'bg-red-600 text-white border-red-900 animate-pulse scale-110' 
+            : 'bg-[#8B5A2B] text-[#f4e4bc] border-[#5c3a1a]'
+        }`}>
+          ⏳ TIME TO ACT: {tensionTimeLeft}s
+        </div>
+      )}
         
         {waitingFor.length > 0 && isGameStarted && !isAiBusy && (
           <div className="bg-yellow-900/80 border-2 border-[#8B5A2B] px-4 py-1.5 rounded-md flex items-center gap-2 text-xs font-mono text-[#f4e4bc] shadow-lg mb-3 pointer-events-auto">
@@ -199,14 +272,14 @@ export default function ChatInterface() {
             <History size={12} /> <span className="text-[10px] font-bold uppercase tracking-widest">LOG</span>
           </button>
 
-          {!isAiBusy && storyText !== "The adventure begins..." && (
-            <button onClick={() => speak(storyText, speakerName)} className="absolute top-3 right-3 bg-[#8B5A2B] p-1.5 rounded-full shadow-[2px_2px_0px_rgba(0,0,0,0.5)] border-2 border-[#5c3a1a] text-[#f4e4bc] hover:bg-[#5c3a1a] transition-colors z-30" title="Read Aloud">
+          {!isAiBusy && displayStory !== "The adventure begins..." && (
+            <button onClick={() => speak(displayStory, speakerName)} className="absolute top-3 right-3 bg-[#8B5A2B] p-1.5 rounded-full shadow-[2px_2px_0px_rgba(0,0,0,0.5)] border-2 border-[#5c3a1a] text-[#f4e4bc] hover:bg-[#5c3a1a] transition-colors z-30" title="Read Aloud">
               <Volume2 size={14} />
             </button>
           )}
 
           <div className={`text-[#3e2723] text-lg md:text-xl leading-tight whitespace-pre-wrap mt-2 mb-4 overflow-y-auto custom-scrollbar flex-1 pr-2 ${vt323.className}`}>
-            {storyText}
+            {displayStory}
             {isAiBusy && <span className="animate-pulse ml-1 font-bold inline-block w-2.5 h-4 bg-[#3e2723]"></span>}
           </div>
 
