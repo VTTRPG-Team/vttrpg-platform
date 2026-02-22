@@ -46,7 +46,6 @@ export default function ChatInterface() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const historyBottomRef = useRef<HTMLDivElement>(null);
   
-  // 🌟 ตัวแปรจำข้อความเก่า เพื่อไม่ให้มันสั่นซ้ำซ้อน
   const processedStoryRef = useRef<string>('');
 
   const { diceState, clearPendingSubmit } = useGameStore()
@@ -63,10 +62,9 @@ export default function ChatInterface() {
   const speakerName = latestAiMessage?.sender || "Game Master";
 
   // =========================================================
-  // 🧠 [ใหม่] ระบบสแกนคำและส่งสัญญาณ FX อัตโนมัติ!
+  // 🧠 ระบบสแกนคำและส่งสัญญาณ FX & AUDIO อัตโนมัติ!
   // =========================================================
   useEffect(() => {
-    // ถ้ายกเลิก/ขึ้นประโยคใหม่ ให้ล้างความจำ
     if (storyText.length < processedStoryRef.current.length) {
       processedStoryRef.current = '';
     }
@@ -74,24 +72,50 @@ export default function ChatInterface() {
     const lowerText = storyText.toLowerCase();
     const oldText = processedStoryRef.current.toLowerCase();
 
-    // ฟังก์ชันเช็คว่ามี "คำใหม่" โผล่มาในประโยคไหม
     const justAppeared = (words: string[]) => words.some(w => lowerText.includes(w) && !oldText.includes(w));
 
-    // 🌪️ เช็คคำที่ทำให้ "สั่นจอ"
+    // 🌪️ FX สั่นจอ
     if (justAppeared(['earthquake', 'shake', 'roar', 'explosion', 'boom', 'rumble', 'แผ่นดินไหว', 'สั่นสะเทือน', 'คำราม', 'ระเบิด'])) {
       window.dispatchEvent(new CustomEvent('ai-fx', { detail: { action: 'shake' } }));
     }
 
-    // 🌙 เช็คคำที่ทำให้ "จอมืด"
+    // 🌙 FX จอมืด
     if (justAppeared(['darkness', 'shadows', 'night falls', 'pitch black', 'creepy', 'deep cave', 'ความมืด', 'มืดมิด', 'ค่ำคืน', 'น่ากลัว'])) {
       window.dispatchEvent(new CustomEvent('ai-fx', { detail: { action: 'dark_on' } }));
     } 
-    // ☀️ เช็คคำที่ทำให้ "สว่าง"
+    // ☀️ FX สว่าง
     else if (justAppeared(['sunlight', 'bright', 'morning', 'torch', 'illuminates', 'สว่าง', 'แสงแดด', 'คบเพลิง', 'รุ่งเช้า'])) {
       window.dispatchEvent(new CustomEvent('ai-fx', { detail: { action: 'dark_off' } }));
     }
 
-    processedStoryRef.current = storyText; // จำข้อความปัจจุบันไว้
+    // ---------------------------------------------------------
+    // 🎵 AUDIO SFX (เสียงเอฟเฟกต์)
+    // ---------------------------------------------------------
+    if (justAppeared(['sword', 'slash', 'blade', 'attack', 'ฟันดาบ', 'โจมตี'])) {
+      window.dispatchEvent(new CustomEvent('ai-audio', { detail: { type: 'play_sfx', track: 'sword' } }));
+    }
+    if (justAppeared(['magic', 'spell', 'fireball', 'cast', 'เวทมนตร์', 'ร่ายเวทย์'])) {
+      window.dispatchEvent(new CustomEvent('ai-audio', { detail: { type: 'play_sfx', track: 'magic' } }));
+    }
+    if (justAppeared(['explosion', 'blast', 'boom', 'ระเบิด'])) {
+      window.dispatchEvent(new CustomEvent('ai-audio', { detail: { type: 'play_sfx', track: 'explosion' } }));
+    }
+    if (justAppeared(['roar', 'growl', 'monster', 'คำราม'])) {
+      window.dispatchEvent(new CustomEvent('ai-audio', { detail: { type: 'play_sfx', track: 'monster' } }));
+    }
+
+    // ---------------------------------------------------------
+    // 🎵 AUDIO BGM (เปลี่ยนเพลงพื้นหลัง)
+    // ---------------------------------------------------------
+    if (justAppeared(['rain', 'storm', 'ฝนตก', 'พายุ'])) {
+      window.dispatchEvent(new CustomEvent('ai-audio', { detail: { type: 'play_bgm', track: 'rain' } }));
+    } else if (justAppeared(['tavern', 'pub', 'inn', 'crowd', 'โรงเตี๊ยม', 'บาร์'])) {
+      window.dispatchEvent(new CustomEvent('ai-audio', { detail: { type: 'play_bgm', track: 'tavern' } }));
+    } else if (justAppeared(['dungeon', 'cave', 'dark', 'creepy', 'ดันเจี้ยน', 'ถ้ำ'])) {
+      window.dispatchEvent(new CustomEvent('ai-audio', { detail: { type: 'play_bgm', track: 'dungeon' } }));
+    }
+
+    processedStoryRef.current = storyText; 
   }, [storyText]);
 
 

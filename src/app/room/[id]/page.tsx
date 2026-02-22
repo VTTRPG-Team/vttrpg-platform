@@ -19,8 +19,8 @@ import DiceControls from '@/components/game/ui/DiceControls'
 import DiceResultOverlay from '@/components/game/ui/DiceResultOverlay' 
 import VideoOverlay from '@/components/game/ui/VideoOverlay'
 
-// 🌟 นำเข้า Environment ที่เราเพิ่งสร้าง
 import Environment from '@/components/game/ui/Environment'
+import AudioEngine from '@/components/game/ui/AudioEngine'
 
 function PhysicsFloor() {
   const [ref] = usePlane(() => ({ rotation: [-Math.PI / 2, 0, 0], position: [0, 0, 0], type: 'Static' }))
@@ -94,6 +94,9 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
              </div>
              
              <div className="flex items-center gap-3 pointer-events-auto">
+               {/* 🌟 ย้าย AudioEngine มาวางตรงนี้! (ด้านซ้ายของปุ่ม View: Table) */}
+               <AudioEngine />
+               
                <button onClick={toggleView} className="bg-neutral-800/80 hover:bg-neutral-700 border border-white/20 text-white px-4 py-2 rounded-lg font-bold text-sm transition-all shadow-lg min-w-[140px]">
                  {viewMode === 'PERSPECTIVE' ? '👁 View: Table' : '♟ View: Board'}
                </button>
