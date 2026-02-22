@@ -3,26 +3,24 @@ import { use, useEffect, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Stars } from '@react-three/drei'
 import { Physics, usePlane } from '@react-three/cannon'
-import { supabase } from '@/lib/supabase' // <--- เพิ่ม Supabase
+import { supabase } from '@/lib/supabase'
 
-// --- LiveKit Imports (NEW) ---
 import { LiveKitRoom, RoomAudioRenderer } from '@livekit/components-react'
 import '@livekit/components-styles'
 
-// Store
 import { useGameStore } from '@/store/useGameStore'
-
-// Game Components
 import CameraManager from '@/components/game/CameraManager'
 import TableBoard from '@/components/game/TableBoard'
 import Dice from '@/components/game/world/Dice'
 
-// UI Components
 import ChatInterface from '@/components/game/ui/ChatInterface'
 import GameControls from '@/components/game/ui/GameControls'
 import DiceControls from '@/components/game/ui/DiceControls'
 import DiceResultOverlay from '@/components/game/ui/DiceResultOverlay' 
-import VideoOverlay from '@/components/game/ui/VideoOverlay' // <--- เพิ่ม VideoOverlay
+import VideoOverlay from '@/components/game/ui/VideoOverlay'
+
+import Environment from '@/components/game/ui/Environment'
+import AudioEngine from '@/components/game/ui/AudioEngine'
 
 import CursorOverlay from '@/components/player-actions/CursorOverlay' // <--- เพิ่ม CursorOverlay
 import QuickChoices from '@/components/player-actions/QuickChoices' // <--- เพิ่ม QuickChoices
@@ -35,8 +33,6 @@ function PhysicsFloor() {
 export default function RoomPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params) 
   const { viewMode, toggleView } = useGameStore()
-
-  // --- LiveKit Token Logic (NEW) ---
   const [token, setToken] = useState("");
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -44,7 +40,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
 
   useEffect(() => {
     const fetchToken = async () => {
-      // 1. ดึงข้อมูลเราจาก Supabase
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       
@@ -62,13 +57,11 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     fetchToken();
   }, [id]);
 
-  // ถ้ายังไม่ได้ Token ให้ขึ้นหน้า Loading ดำๆ ไว้ก่อน จะได้ไม่กระตุก
   if (!token) {
     return <div className="w-full h-screen bg-black flex items-center justify-center text-white font-mono animate-pulse">Connecting to Realm...</div>;
   }
 
   return (
-    // ครอบด้วย LiveKitRoom
     <LiveKitRoom
       video={true}
       audio={true}
@@ -78,8 +71,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
       connect={true}
     >
       <main className="relative w-full h-screen overflow-hidden bg-black font-sans select-none">
-        
-        {/* พระเอกเรื่องเสียง: ขาดไม่ได้ */}
         <RoomAudioRenderer />
 
         {/* === LAYER 0: 3D WORLD === */}
@@ -94,13 +85,11 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
               <PhysicsFloor />
               <Dice /> 
               <TableBoard />    
-              <mesh position={[-5, 0.5, 0]}><boxGeometry args={[1,1,1]} /><meshStandardMaterial color="red"/></mesh>
-              <mesh position={[5, 0.5, 0]}><boxGeometry args={[1,1,1]} /><meshStandardMaterial color="blue"/></mesh>
             </Physics>
           </Canvas>
         </div>
 
-        {/* === LAYER 0.5: PLAYER VIDEOS (NEW) === */}
+        {/* === LAYER 0.5: PLAYER VIDEOS === */}
         <div className="absolute top-24 right-6 z-40">
            <VideoOverlay />
         </div>
@@ -110,36 +99,33 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
           <QuickChoices />
           <CursorOverlay roomId={id} currentUserId={currentUserId} myUsername={myUsername} />
                     
+        <div className="absolute inset-0 z-10 pointer-events-none flex flex-col justify-between p-4">
           <DiceResultOverlay />
           
-          {/* Header Bar */}
           <div className="w-full flex justify-between items-start z-50">
-             <div className="bg-black/40 backdrop-blur px-4 py-2 rounded-lg border border-white/10 text-white text-sm font-mono shadow-lg">
+             <div className="bg-black/40 backdrop-blur px-4 py-2 rounded-lg border border-white/10 text-white text-sm font-mono shadow-lg pointer-events-auto">
                ROOM: <span className="text-yellow-400">{id}</span>
              </div>
              
-             <div className="flex items-center gap-3">
-               <button onClick={toggleView} className="pointer-events-auto bg-neutral-800/80 hover:bg-neutral-700 border border-white/20 text-white px-4 py-2 rounded-lg font-bold text-sm transition-all shadow-lg min-w-[140px]">
+             <div className="flex items-center gap-3 pointer-events-auto">
+               {/* 🌟 ย้าย AudioEngine มาวางตรงนี้! (ด้านซ้ายของปุ่ม View: Table) */}
+               <AudioEngine />
+               
+               <button onClick={toggleView} className="bg-neutral-800/80 hover:bg-neutral-700 border border-white/20 text-white px-4 py-2 rounded-lg font-bold text-sm transition-all shadow-lg min-w-[140px]">
                  {viewMode === 'PERSPECTIVE' ? '👁 View: Table' : '♟ View: Board'}
                </button>
                <GameControls />
              </div>
           </div>
 
-          {/* Chat */}
-          <div className="flex-1 flex overflow-hidden relative mt-4">
-             <div className={`h-full z-20 transition-transform duration-500 ease-in-out pointer-events-auto shadow-2xl rounded-xl overflow-hidden ${
-               viewMode === 'TOP_DOWN' ? 'translate-x-0' : '-translate-x-full lg:translate-x-0 lg:opacity-100 opacity-0'
-             }`}>
-               <ChatInterface />
-             </div>
-          </div>
-
-          {/* Dice Button */}
           <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 pointer-events-auto z-50">
               <DiceControls />
           </div>
         </div>
+
+        {/* 🌟 วาง Environment และ ChatInterface ตรงนี้ */}
+        <Environment />
+        <ChatInterface />
 
       </main>
     </LiveKitRoom>
