@@ -7,6 +7,9 @@ import { Heart, Droplet, Skull, Flame, ShieldAlert, Mic, MicOff, Video as VideoI
 import { Cinzel } from 'next/font/google'
 import { supabase } from '@/lib/supabase'
 
+// 🌟 Import ตัวเลขลอยเข้ามา
+import DamageNumbers from './DamageNumbers' 
+
 const cinzel = Cinzel({ subsets: ['latin'], weight: ['700'] });
 
 const renderStatusIcon = (status: string) => {
@@ -18,9 +21,6 @@ const renderStatusIcon = (status: string) => {
   }
 };
 
-// ==========================================
-// 🌟 Component: การ์ดวิดีโอของผู้เล่นแต่ละคน
-// ==========================================
 function PlayerVideoCard({ p }: { p: Participant }) {
   const { playerStats } = useGameStore();
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -32,7 +32,6 @@ function PlayerVideoCard({ p }: { p: Participant }) {
   const isMicMuted = !p.isMicrophoneEnabled;
   const isSpeaking = p.isSpeaking; 
   
-  // 🌟 อ่านป้ายประกาศสถานะ "หูตึง" จาก Attributes ที่แอบส่งมา
   const isDeafened = p.attributes?.deafened === 'true';
 
   const username = p.name || 'Unknown';
@@ -54,6 +53,9 @@ function PlayerVideoCard({ p }: { p: Participant }) {
     <div className={`relative bg-[#1a0f0a]/90 backdrop-blur-md border-2 rounded-lg shadow-[0_0_15px_rgba(0,0,0,0.8)] overflow-hidden transition-all duration-300 group
         ${isSpeaking && !isMicMuted ? 'border-green-500 shadow-[0_0_20px_rgba(34,197,94,0.6)] scale-105 z-10' : 'border-[#5d4037] hover:border-[#F4E4BC]/50'}`}>
       
+      {/* 🌟 ยัด DamageNumbers ล่องหนเอาไว้ตรงนี้ให้ทับหน้าคนพอดี! */}
+      <DamageNumbers username={username} />
+
       {/* 📸 ส่วนที่ 1: กล้อง Video หรือ Avatar */}
       <div className="relative w-full h-28 bg-black border-b border-[#3e2723]">
         {isVideoOn ? (
@@ -68,15 +70,13 @@ function PlayerVideoCard({ p }: { p: Participant }) {
           </div>
         )}
         
-        {/* 🌟 ไอคอนสถานะอุปกรณ์ (เรียงติดกันมุมขวาบน) */}
+        {/* ไอคอนสถานะอุปกรณ์ */}
         <div className="absolute top-2 right-2 flex gap-1 z-20">
-          {/* สถานะหูฟัง */}
           {isDeafened && (
             <div className="bg-red-900/80 p-1 rounded text-white backdrop-blur-sm" title="Deafened">
               <HeadphoneOff size={12} />
             </div>
           )}
-          {/* สถานะไมค์ */}
           {isMicMuted ? (
             <div className="bg-red-900/80 p-1 rounded text-white backdrop-blur-sm" title="Muted">
               <MicOff size={12} />
@@ -96,8 +96,8 @@ function PlayerVideoCard({ p }: { p: Participant }) {
         </div>
       </div>
 
-      {/* 📊 ส่วนที่ 2: RPG Stats (เลือด / มานา) */}
-      <div className="p-2 space-y-2">
+      {/* 📊 ส่วนที่ 2: RPG Stats */}
+      <div className="p-2 space-y-2 relative z-20">
         <div className="relative w-full h-3 bg-red-950 rounded-full border border-red-900 overflow-hidden shadow-inner">
           <div 
             className="absolute top-0 left-0 h-full bg-gradient-to-r from-red-700 to-red-500 transition-all duration-500 ease-out"
@@ -132,16 +132,13 @@ function PlayerVideoCard({ p }: { p: Participant }) {
       </div>
       
       {/* เอฟเฟกต์จอแดงเวลาเลือดจะหมด */}
-      {hpPercent <= 20 && (
+      {hpPercent <= 20 && hpPercent > 0 && (
         <div className="absolute inset-0 border-2 border-red-600 animate-pulse pointer-events-none rounded-lg z-30" />
       )}
     </div>
   );
 }
 
-// ==========================================
-// 🌟 Component หลัก: แถบวิดีโอรวมและปุ่มกด
-// ==========================================
 export default function VideoOverlay() {
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();
@@ -150,55 +147,37 @@ export default function VideoOverlay() {
   const [isCamOn, setIsCamOn] = useState(true);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
 
-  // 🌟 1. คุมเปิด-ปิด ไมค์และกล้อง (จัดการที่เครื่อง Local ไม่ค่อยงอแง)
   useEffect(() => {
     if (!localParticipant) return;
-    
-    // ใส่ catch กันเหนียวเผื่อกล้อง/ไมค์โหลดไม่ทัน
     localParticipant.setMicrophoneEnabled(isMicOn).catch(e => console.warn("Mic Error:", e));
     localParticipant.setCameraEnabled(isCamOn).catch(e => console.warn("Cam Error:", e));
   }, [isMicOn, isCamOn, localParticipant]);
 
-  // 🌟 2. คุมป้ายประกาศ "หูตึง" (ต้องส่งข้ามเน็ตไปหาเซิร์ฟเวอร์ เลยต้องมี try..catch ดัก Timeout)
   useEffect(() => {
     const updateDeafenStatus = async () => {
       if (!localParticipant) return;
       try {
         await localParticipant.setAttributes({ deafened: (!isSpeakerOn).toString() });
       } catch (error) {
-        console.warn("⚠️ ส่งป้ายประกาศหูตึงไม่ทัน (Timeout) แต่แอปไม่พังแล้ว:", error);
+        console.warn("⚠️ ส่งป้ายประกาศหูตึงไม่ทัน:", error);
       }
     };
-    
     updateDeafenStatus();
   }, [isSpeakerOn, localParticipant]);
 
   return (
     <div className="flex flex-col gap-3 w-48 pointer-events-auto">
-      
       {isSpeakerOn && <RoomAudioRenderer />}
 
       {/* 🎛️ ปุ่มควบคุมส่วนตัว (My Controls) */}
       <div className="flex justify-between gap-1 bg-[#1a0f0a]/95 p-2 rounded-lg border-2 border-[#3e2723] backdrop-blur-md shadow-xl">
-          <button 
-            onClick={() => setIsMicOn(!isMicOn)} 
-            className={`flex-1 flex justify-center p-2 rounded-md transition-all ${isMicOn ? 'bg-[#3e2723] text-[#F4E4BC] hover:bg-[#5d4037]' : 'bg-red-900/80 text-red-200 shadow-[0_0_8px_red]'}`} 
-            title={isMicOn ? 'Mute Mic' : 'Unmute Mic'}
-          >
+          <button onClick={() => setIsMicOn(!isMicOn)} className={`flex-1 flex justify-center p-2 rounded-md transition-all ${isMicOn ? 'bg-[#3e2723] text-[#F4E4BC] hover:bg-[#5d4037]' : 'bg-red-900/80 text-red-200 shadow-[0_0_8px_red]'}`} title={isMicOn ? 'Mute Mic' : 'Unmute Mic'}>
             {isMicOn ? <Mic size={16}/> : <MicOff size={16}/>}
           </button>
-          <button 
-            onClick={() => setIsCamOn(!isCamOn)} 
-            className={`flex-1 flex justify-center p-2 rounded-md transition-all ${isCamOn ? 'bg-[#3e2723] text-[#F4E4BC] hover:bg-[#5d4037]' : 'bg-red-900/80 text-red-200 shadow-[0_0_8px_red]'}`} 
-            title={isCamOn ? 'Turn Off Camera' : 'Turn On Camera'}
-          >
+          <button onClick={() => setIsCamOn(!isCamOn)} className={`flex-1 flex justify-center p-2 rounded-md transition-all ${isCamOn ? 'bg-[#3e2723] text-[#F4E4BC] hover:bg-[#5d4037]' : 'bg-red-900/80 text-red-200 shadow-[0_0_8px_red]'}`} title={isCamOn ? 'Turn Off Camera' : 'Turn On Camera'}>
             {isCamOn ? <VideoIcon size={16}/> : <VideoOff size={16}/>}
           </button>
-          <button 
-            onClick={() => setIsSpeakerOn(!isSpeakerOn)} 
-            className={`flex-1 flex justify-center p-2 rounded-md transition-all ${isSpeakerOn ? 'bg-[#3e2723] text-[#F4E4BC] hover:bg-[#5d4037]' : 'bg-red-900/80 text-red-200 shadow-[0_0_8px_red]'}`} 
-            title={isSpeakerOn ? 'Deafen (Mute Audio)' : 'Undeafen'}
-          >
+          <button onClick={() => setIsSpeakerOn(!isSpeakerOn)} className={`flex-1 flex justify-center p-2 rounded-md transition-all ${isSpeakerOn ? 'bg-[#3e2723] text-[#F4E4BC] hover:bg-[#5d4037]' : 'bg-red-900/80 text-red-200 shadow-[0_0_8px_red]'}`} title={isSpeakerOn ? 'Deafen (Mute Audio)' : 'Undeafen'}>
             {isSpeakerOn ? <Headphones size={16}/> : <HeadphoneOff size={16}/>}
           </button>
       </div>
