@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     name: username,
   });
 
-  at.addGrant({ roomJoin: true, room: room, canPublish: true, canSubscribe: true });
+  at.addGrant({ roomJoin: true, room: room, canPublish: true, canSubscribe: true, canUpdateOwnMetadata: true });
 
   return NextResponse.json({ token: await at.toJwt() });
 }

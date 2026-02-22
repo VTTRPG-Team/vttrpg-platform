@@ -22,6 +22,9 @@ import VideoOverlay from '@/components/game/ui/VideoOverlay'
 import Environment from '@/components/game/ui/Environment'
 import AudioEngine from '@/components/game/ui/AudioEngine'
 
+import CursorOverlay from '@/components/player-actions/CursorOverlay' // <--- เพิ่ม CursorOverlay
+import QuickChoices from '@/components/player-actions/QuickChoices' // <--- เพิ่ม QuickChoices
+
 function PhysicsFloor() {
   const [ref] = usePlane(() => ({ rotation: [-Math.PI / 2, 0, 0], position: [0, 0, 0], type: 'Static' }))
   return <mesh ref={ref as any} visible={false}><planeGeometry args={[20, 20]} /></mesh>
@@ -32,6 +35,9 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   const { viewMode, toggleView } = useGameStore()
   const [token, setToken] = useState("");
 
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [myUsername, setMyUsername] = useState<string>('Player');
+
   useEffect(() => {
     const fetchToken = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -40,6 +46,10 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
       const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single();
       const username = profile?.username || 'Player';
 
+      setCurrentUserId(user.id);
+      setMyUsername(username);
+
+      // 2. ขอ Token จาก API 
       const res = await fetch(`/api/livekit?room=${id}&username=${username}&userId=${user.id}`);
       const data = await res.json();
       setToken(data.token);
@@ -85,6 +95,10 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
         </div>
 
         {/* === LAYER 1: UI OVERLAY === */}
+        <div className="absolute inset-0 z-50 pointer-events-none flex flex-col justify-between p-4">
+          <QuickChoices />
+          <CursorOverlay roomId={id} currentUserId={currentUserId} myUsername={myUsername} />
+                    
         <div className="absolute inset-0 z-10 pointer-events-none flex flex-col justify-between p-4">
           <DiceResultOverlay />
           
