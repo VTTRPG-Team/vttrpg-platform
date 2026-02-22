@@ -30,7 +30,7 @@ export const ai_gm = () => {
         if (prof?.username) {
             const name = prof.username.trim();
             setMyUsername(name);
-            useGameStore.getState().setMyUsername(name); // ให้ Store จำชื่อไว้
+            useGameStore.getState().setMyUsername(name);
         }
       }
 
@@ -64,8 +64,10 @@ export const ai_gm = () => {
             setLoading(false);
             setMessages(prev => [...prev, { id: msgId, userId: null, sender: 'AI GM', text, type: 'AI', channel: 'AI' }]);
             
-            // 🌟 สั่งเด้งเต๋า พร้อมเป้าหมาย
-            if (rollRequest) useGameStore.getState().triggerDiceRoll(rollRequest.type as any, rollRequest.target);
+            if (rollRequest) {
+              const targets = rollRequest.target && rollRequest.target !== 'ALL' ? [rollRequest.target] : [];
+              useGameStore.getState().triggerDiceRollEvent(rollRequest.type as any, targets);
+            }
           }
         }, 10);
     };
@@ -84,18 +86,33 @@ export const ai_gm = () => {
     const channel = pusher.subscribe(`room-${roomId}`);
     
     channel.bind('party-chat-event', (data: any) => {
-      const { message, senderId, actionType, rollRequest } = data;
+      const { message, senderId, actionType, rollRequest, diceData } = data;
       if (senderId === localClientId) return; 
 
       if (actionType === 'AI_THINKING' || message?.id === 'sys-thinking') {
          setLoading(true);
       }
-      else if (actionType === 'AI_ERROR' || message?.id === 'sys-err') { // 🌟 THE FIX: ดักจับ id ด้วย เผื่อบางที actionType หลุด
+      else if (actionType === 'AI_ERROR' || message?.id === 'sys-err') { 
          setLoading(false); 
       }
       else if (actionType === 'AI_RESPONSE') {
         processRef.current(message.text, rollRequest, message.id); 
       } 
+      // 🌟 รับคำสั่งปลดล็อค Debug จากเพื่อน
+      else if (actionType === 'DEBUG_UNLOCK') {
+        useGameStore.getState().debugUnlockDice();
+      }
+      // 🌟 รับเต๋าจากเพื่อน (อัปเดตใหม่ ให้มี rollId และส่ง isLocal เป็น false)
+      else if (actionType === 'DICE_ROLL' && diceData) {
+        useGameStore.getState().addDiceRoll(
+           diceData.rollId, 
+           diceData.userId, 
+           diceData.username, 
+           diceData.diceType, 
+           diceData.result, 
+           false // <--- จุดสำคัญที่ทำให้ปุ่มทอยเราไม่โดนล็อคเวลาเพื่อนทอย
+        );
+      }
       else if (message && message.text) { 
         setMessages(prev => prev.some(m => m.id === message.id) ? prev : [...prev, message]);
         if (message.channel === 'AI' && message.type === 'USER') {
@@ -137,7 +154,6 @@ export const ai_gm = () => {
 
       if (!text) throw new Error("No text from AI");
 
-      // 🌟 ดึงชื่อเป้าหมายจากการทอย (ถ้ามี)
       let rollRequest = null;
       const rollMatch = text.match(/\[ROLL_REQUEST:(D\d+)(?::(.+?))?\]/i);
       if (rollMatch) {
@@ -162,12 +178,7 @@ export const ai_gm = () => {
       console.error("AI API Error:", err); 
       setLoading(false); 
 
-      // ==========================================
-      // 🌟 THE FIX: ระบบกู้ชีพ ปลดล็อคหน้าจอทุกคนเวลา AI พัง
-      // ==========================================
       const errorMsgId = `err-${Date.now()}`;
-      
-      // สร้างข้อความจำลองจาก AI เพื่อแจ้งเตือนว่าเกิด Error
       const fallbackMsg: UIMessage = { 
          id: errorMsgId, 
          userId: null, 
@@ -177,17 +188,13 @@ export const ai_gm = () => {
          channel: 'AI' 
       };
 
-      // ยิงไปกระตุกจอเพื่อนผ่าน Pusher (ส่งเป็น AI_RESPONSE เพื่อให้ระบบจบเทิร์น)
       fetch('/api/pusher/party-chat', { 
          method: 'POST', 
          headers: { 'Content-Type': 'application/json' }, 
          body: JSON.stringify({ roomId, message: fallbackMsg, senderId: localClientId, actionType: 'AI_RESPONSE', rollRequest: null }) 
       }).catch(() => {});
 
-      // โชว์แอนิเมชันแจ้งเตือนบนจอตัวเองด้วย
       processRef.current(fallbackMsg.text, null, errorMsgId);
-      
-      // ==========================================
     }
   };
 
