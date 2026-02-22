@@ -4,6 +4,8 @@ import { useGameStore } from '@/store/useGameStore'
 import { ai_gm } from '@/app/ai-gm/ai_gm'
 import { Send, Volume2, MessageSquareText, X, History } from 'lucide-react'
 import { useTextToSpeech } from '@/hooks/useTextToSpeech'
+import { parseAIText } from '@/utils/tagParser'
+import QuickChoices from '@/components/player-actions/QuickChoices'
 
 import { VT323 } from 'next/font/google'
 const vt323 = VT323({ subsets: ['latin'], weight: ['400'] });
@@ -43,12 +45,18 @@ export default function ChatInterface() {
   const [actionInput, setActionInput] = useState('');
   const [partyInput, setPartyInput] = useState('');
 
+  const { 
+    diceState, clearPendingSubmit,
+    myUsername, updatePlayerStat, 
+    setCurrentBg, setQuickChoices, clearQuickChoices,
+    isTimerActive, tensionTimeLeft, startTensionTimer, stopTensionTimer, tickTensionTimer
+  } = useGameStore()
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const historyBottomRef = useRef<HTMLDivElement>(null);
   
   const processedStoryRef = useRef<string>('');
 
-  const { diceState, clearPendingSubmit } = useGameStore()
   const { speak } = useTextToSpeech();
   const { messages, loading, currentAiText, sendAiAction, sendPartyMessage, currentUserId, waitingFor, hasSubmittedAction, isGameStarted } = ai_gm();
 
@@ -60,6 +68,30 @@ export default function ChatInterface() {
 
   const storyText = (isAiBusy && currentAiText) ? currentAiText : (latestAiMessage?.text || "The adventure begins...");
   const speakerName = latestAiMessage?.sender || "Game Master";
+
+  const parsedData = useMemo(() => parseAIText(storyText), [storyText]);
+  const displayStory = parsedData.cleanStory; // <-- เราจะเอาตัวนี้ไปโชว์แทน storyText
+
+  useEffect(() => {
+    const handleQuickAction = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const choiceText = customEvent.detail; // ข้อความในปุ่มที่เพื่อนส่งมาให้
+
+      // ถ้า AI ไม่ได้กำลังพิมพ์ และเรายังไม่ได้กดส่ง Action ไปก่อนหน้านี้
+      if (!isAiBusy && !hasSubmittedAction) {
+        sendAiAction(choiceText); // โยนข้อความส่งไปหา AI เลย!
+        stopTensionTimer(); // กดปุ่มแล้ว ต้องหยุดเวลานับถอยหลังด้วย
+      }
+    };
+
+    // เปิดหูรับฟัง Event ที่เพื่อนสร้างไว้
+    window.addEventListener('quick-action-selected', handleQuickAction);
+
+    // ปิดหูเมื่อสลับหน้าเว็บ
+    return () => {
+      window.removeEventListener('quick-action-selected', handleQuickAction);
+    };
+  }, [isAiBusy, hasSubmittedAction, sendAiAction, stopTensionTimer]);
 
   // =========================================================
   // 🧠 ระบบสแกนคำและส่งสัญญาณ FX & AUDIO อัตโนมัติ!
@@ -118,6 +150,81 @@ export default function ChatInterface() {
     processedStoryRef.current = storyText; 
   }, [storyText]);
 
+  // =========================================================
+  // 🌟 4. ระบบจัดการ TAGs และ TENSION TIMER
+  // =========================================================
+  
+  // 4.1 อัปเดตพื้นหลังทันทีที่ AI พิมพ์ [BG:...] ออกมา
+  useEffect(() => {
+    if (parsedData.bg) {
+      setCurrentBg(parsedData.bg);
+    }
+  }, [parsedData.bg, setCurrentBg]);
+
+  // 4.2 จัดการเลือด Choice และเต๋า เมื่อ AI พิมพ์ "เสร็จสิ้น"
+  const processedMsgIdRef = useRef<string>('');
+  
+  useEffect(() => {
+    if (!isAiBusy && latestAiMessage && latestAiMessage.id !== processedMsgIdRef.current) {
+       // ตัดคำจากข้อความที่สมบูรณ์แล้ว
+       const finalParsed = parseAIText(latestAiMessage.text);
+       
+       // หักเลือด/เพิ่มเลือด
+       if (finalParsed.hpChange !== 0 && myUsername) {
+          updatePlayerStat(myUsername, 'hp', finalParsed.hpChange);
+       }
+
+       // 🌟 เช็กว่ามีคำสั่ง "ทอยเต๋า" ไหม? ถ้ามีให้เปิด UI เต๋า
+       if (finalParsed.diceRequest) {
+          useGameStore.setState((state) => ({
+            diceState: {
+              ...state.diceState,
+              requiredDice: finalParsed.diceRequest?.type as any, // D6, D8, D20
+              targetPlayer: finalParsed.diceRequest?.target || null, // ชื่อเพื่อน หรือ ALL
+              isRolling: false,
+              isShowingResult: false,
+            }
+          }));
+          
+          // หยุดเวลานับถอยหลังของ Choice ไว้ก่อน (รอให้ทอยเต๋าเสร็จ)
+          stopTensionTimer(); 
+       } 
+       // 🌟 ถ้าไม่มีคำสั่งทอยเต๋า ค่อยเด้งปุ่ม Choice ปกติ
+       else if (finalParsed.choices.length > 0) {
+          setQuickChoices(finalParsed.choices);
+          startTensionTimer(30); // เริ่มนับเวลาถอยหลัง
+       }
+
+       processedMsgIdRef.current = latestAiMessage.id;
+    }
+  }, [isAiBusy, latestAiMessage, myUsername, updatePlayerStat, setQuickChoices, startTensionTimer, stopTensionTimer]);
+  // =========================================================
+  // 🌟 4.3 ระบบนับถอยหลัง (Timer Countdown) ฉบับแก้เวลาค้าง
+  // =========================================================
+
+  // ตัวที่ 1: ทำหน้าที่ "ลดเวลา" ทุกๆ 1 วินาทีอย่างเดียว (ไม่สนการรีเรนเดอร์อื่นๆ)
+  useEffect(() => {
+    // ถ้าไม่ได้เปิดโหมดจับเวลา ให้ข้ามไปเลย
+    if (!isTimerActive) return;
+
+    const intervalId = setInterval(() => {
+      tickTensionTimer(); // สั่งลดเวลาใน Store
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+  }, [isTimerActive, tickTensionTimer]); // 👈 สังเกตว่าเราเอา tensionTimeLeft ออกจากวงเล็บนี้ เพื่อไม่ให้มันโดนรีเซ็ตตัวเอง
+
+  // ตัวที่ 2: ทำหน้าที่ "เช็กว่าเวลาหมดหรือยัง (เหลือ 0)"
+  useEffect(() => {
+    if (isTimerActive && tensionTimeLeft <= 0) {
+      stopTensionTimer();
+      clearQuickChoices(); // ซ่อนปุ่มเพื่อน
+      if (!hasSubmittedAction) {
+        sendAiAction("ผู้เล่นลังเล ยืนอึ้งทำอะไรไม่ถูกเพราะหมดเวลาตัดสินใจ!");
+      }
+    }
+  }, [isTimerActive, tensionTimeLeft, hasSubmittedAction, stopTensionTimer, clearQuickChoices, sendAiAction]);
+
 
   // =========================================================
   // UI LOGIC 
@@ -163,6 +270,16 @@ export default function ChatInterface() {
       {/* 1. กล่องเนื้อเรื่อง Stardew Valley */}
       {/* ========================================================= */}
       <div className="fixed top-24 left-6 w-[320px] md:w-[380px] max-h-[75vh] z-[9000] pointer-events-none flex flex-col items-start">
+      {/* 🌟 ป้ายประกาศเวลา Tension Timer */}
+      {isTimerActive && (
+        <div className={`fixed top-12 left-1/2 transform -translate-x-1/2 px-6 py-2 rounded-lg font-bold text-xl md:text-2xl shadow-[4px_4px_0px_rgba(0,0,0,0.8)] z-[9999] border-4 transition-colors ${vt323.className} ${
+          tensionTimeLeft <= 3 
+            ? 'bg-red-600 text-white border-red-900 animate-pulse scale-110' 
+            : 'bg-[#8B5A2B] text-[#f4e4bc] border-[#5c3a1a]'
+        }`}>
+          ⏳ TIME TO ACT: {tensionTimeLeft}s
+        </div>
+      )}
         
         {waitingFor.length > 0 && isGameStarted && !isAiBusy && (
           <div className="bg-yellow-900/80 border-2 border-[#8B5A2B] px-4 py-1.5 rounded-md flex items-center gap-2 text-xs font-mono text-[#f4e4bc] shadow-lg mb-3 pointer-events-auto">
@@ -199,14 +316,14 @@ export default function ChatInterface() {
             <History size={12} /> <span className="text-[10px] font-bold uppercase tracking-widest">LOG</span>
           </button>
 
-          {!isAiBusy && storyText !== "The adventure begins..." && (
-            <button onClick={() => speak(storyText, speakerName)} className="absolute top-3 right-3 bg-[#8B5A2B] p-1.5 rounded-full shadow-[2px_2px_0px_rgba(0,0,0,0.5)] border-2 border-[#5c3a1a] text-[#f4e4bc] hover:bg-[#5c3a1a] transition-colors z-30" title="Read Aloud">
+          {!isAiBusy && displayStory !== "The adventure begins..." && (
+            <button onClick={() => speak(displayStory, speakerName)} className="absolute top-3 right-3 bg-[#8B5A2B] p-1.5 rounded-full shadow-[2px_2px_0px_rgba(0,0,0,0.5)] border-2 border-[#5c3a1a] text-[#f4e4bc] hover:bg-[#5c3a1a] transition-colors z-30" title="Read Aloud">
               <Volume2 size={14} />
             </button>
           )}
 
           <div className={`text-[#3e2723] text-lg md:text-xl leading-tight whitespace-pre-wrap mt-2 mb-4 overflow-y-auto custom-scrollbar flex-1 pr-2 ${vt323.className}`}>
-            {storyText}
+            {displayStory}
             {isAiBusy && <span className="animate-pulse ml-1 font-bold inline-block w-2.5 h-4 bg-[#3e2723]"></span>}
           </div>
 

@@ -30,7 +30,7 @@ export const ai_gm = () => {
         if (prof?.username) {
             const name = prof.username.trim();
             setMyUsername(name);
-            useGameStore.getState().setMyUsername(name); // ให้ Store จำชื่อไว้
+            useGameStore.getState().setMyUsername(name);
         }
       }
 
@@ -49,9 +49,10 @@ export const ai_gm = () => {
     initData();
   }, [roomId]);
 
-  const processRef = useRef((text: string, rollRequest: any, msgId: string) => {});
+  // 🌟 ลบ rollRequest ออกจาก processRef ให้เหลือแค่ text กับ msgId พอ
+  const processRef = useRef((text: string, msgId: string) => {});
   useEffect(() => {
-    processRef.current = (text: string, rollRequest: any, msgId: string) => {
+    processRef.current = (text: string, msgId: string) => {
         setLoading(true);
         setCurrentAiText("");
         let i = 0;
@@ -63,9 +64,6 @@ export const ai_gm = () => {
             setCurrentAiText("");
             setLoading(false);
             setMessages(prev => [...prev, { id: msgId, userId: null, sender: 'AI GM', text, type: 'AI', channel: 'AI' }]);
-            
-            // 🌟 สั่งเด้งเต๋า พร้อมเป้าหมาย
-            if (rollRequest) useGameStore.getState().triggerDiceRoll(rollRequest.type as any, rollRequest.target);
           }
         }, 10);
     };
@@ -84,18 +82,24 @@ export const ai_gm = () => {
     const channel = pusher.subscribe(`room-${roomId}`);
     
     channel.bind('party-chat-event', (data: any) => {
-      const { message, senderId, actionType, rollRequest } = data;
+      const { message, senderId, actionType } = data;
       if (senderId === localClientId) return; 
 
+      // 1. AI เริ่มคิด (ล็อคจอเพื่อนๆ)
       if (actionType === 'AI_THINKING' || message?.id === 'sys-thinking') {
          setLoading(true);
       }
-      else if (actionType === 'AI_ERROR' || message?.id === 'sys-err') { // 🌟 THE FIX: ดักจับ id ด้วย เผื่อบางที actionType หลุด
-         setLoading(false); 
+      // 2. ถ้ามี Error จากระบบ
+      else if (actionType === 'AI_ERROR' || message?.id?.startsWith('err-')) {
+         // รันเอฟเฟกต์พิมพ์ข้อความ Error (พอพิมพ์จบมันจะปลดล็อคจอให้เองอัตโนมัติ)
+         if (message?.text) processRef.current(message.text, message.id); 
       }
-      else if (actionType === 'AI_RESPONSE') {
-        processRef.current(message.text, rollRequest, message.id); 
+      // 🌟 3. THE FIX: ดักจับเวลา AI ตอบกลับมาให้ชัวร์ 100%
+      // เติมเงื่อนไข (message?.type === 'AI') เข้าไป เผื่อสัญญาณ actionType หายระหว่างทาง
+      else if (actionType === 'AI_RESPONSE' || (message?.type === 'AI' && message?.sender === 'AI GM')) {
+        processRef.current(message.text, message.id); 
       } 
+      // 4. ข้อความแชทปกติจากผู้เล่นคนอื่นๆ
       else if (message && message.text) { 
         setMessages(prev => prev.some(m => m.id === message.id) ? prev : [...prev, message]);
         if (message.channel === 'AI' && message.type === 'USER') {
@@ -137,16 +141,10 @@ export const ai_gm = () => {
 
       if (!text) throw new Error("No text from AI");
 
-      // 🌟 ดึงชื่อเป้าหมายจากการทอย (ถ้ามี)
-      let rollRequest = null;
-      const rollMatch = text.match(/\[ROLL_REQUEST:(D\d+)(?::(.+?))?\]/i);
-      if (rollMatch) {
-        rollRequest = { type: rollMatch[1].toUpperCase(), target: rollMatch[2] ? rollMatch[2].trim() : 'ALL' };
-        text = text.replace(/\[ROLL_REQUEST:(D\d+)(?::(.+?))?\]/ig, '').trim();
-      }
-
+      // 🌟 เอาการกรอง Roll Request ตรงนี้ออก ปล่อยให้เป็นหน้าที่ของ tagParser จัดการ
+      // เราจะแค่ทำความสะอาด text สำหรับส่งไปเจนรูปพอ
       import('./ai_asset').then(({ generateBoardImage }) => {
-          const cleanText = text.replace(/[*_#]/g, ''); 
+          const cleanText = text.replace(/\[.*?\]/g, '').replace(/[*_#]/g, ''); // เอาแท็กทั้งหมดใน [] และเครื่องหมาย markdown ออกก่อนส่งไปเจนรูป
           const imagePrompt = isAutoStart ? `Fantasy RPG Opening Scene: ${cleanText.slice(0, 150)}` : `Fantasy RPG Scene: ${cleanText.slice(0, 150)}`; 
           generateBoardImage(roomId, imagePrompt);
       });
@@ -154,20 +152,18 @@ export const ai_gm = () => {
       const msgId = `ai-${Date.now()}`;
       const fullAiMessage: UIMessage = { id: msgId, userId: null, sender: 'AI GM', text: text, type: 'AI', channel: 'AI' };
 
-      fetch('/api/pusher/party-chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId, message: fullAiMessage, senderId: localClientId, actionType: 'AI_RESPONSE', rollRequest }) });
-      processRef.current(text, rollRequest, msgId);
+      // 🌟 เอา rollRequest ออกจาก body ของ fetch
+      fetch('/api/pusher/party-chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId, message: fullAiMessage, senderId: localClientId, actionType: 'AI_RESPONSE' }) });
+      
+      processRef.current(text, msgId);
       await supabase.from('game_messages').insert({ room_id: roomId, sender_name: 'AI GM', content: text, message_type: 'AI', channel: 'AI' });
 
     } catch (err) { 
       console.error("AI API Error:", err); 
       setLoading(false); 
 
-      // ==========================================
-      // 🌟 THE FIX: ระบบกู้ชีพ ปลดล็อคหน้าจอทุกคนเวลา AI พัง
-      // ==========================================
       const errorMsgId = `err-${Date.now()}`;
       
-      // สร้างข้อความจำลองจาก AI เพื่อแจ้งเตือนว่าเกิด Error
       const fallbackMsg: UIMessage = { 
          id: errorMsgId, 
          userId: null, 
@@ -177,17 +173,13 @@ export const ai_gm = () => {
          channel: 'AI' 
       };
 
-      // ยิงไปกระตุกจอเพื่อนผ่าน Pusher (ส่งเป็น AI_RESPONSE เพื่อให้ระบบจบเทิร์น)
       fetch('/api/pusher/party-chat', { 
          method: 'POST', 
          headers: { 'Content-Type': 'application/json' }, 
-         body: JSON.stringify({ roomId, message: fallbackMsg, senderId: localClientId, actionType: 'AI_RESPONSE', rollRequest: null }) 
+         body: JSON.stringify({ roomId, message: fallbackMsg, senderId: localClientId, actionType: 'AI_RESPONSE' }) 
       }).catch(() => {});
 
-      // โชว์แอนิเมชันแจ้งเตือนบนจอตัวเองด้วย
-      processRef.current(fallbackMsg.text, null, errorMsgId);
-      
-      // ==========================================
+      processRef.current(fallbackMsg.text, errorMsgId);
     }
   };
 

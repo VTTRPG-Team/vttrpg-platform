@@ -65,6 +65,16 @@ interface GameState {
   playerStats: Record<string, PlayerStats>;
   updatePlayerStat: (username: string, statType: 'hp' | 'mana', amount: number) => void;
   setPlayerStatus: (username: string, status: string, action: 'add' | 'remove') => void;
+
+  // 🌟 State ของคุณที่แทรกเพิ่ม
+  currentBg: string | null;
+  setCurrentBg: (bg: string | null) => void;
+  
+  isTimerActive: boolean;
+  tensionTimeLeft: number;
+  startTensionTimer: (seconds?: number) => void;
+  stopTensionTimer: () => void;
+  tickTensionTimer: () => void;
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -85,6 +95,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     messages: [...state.messages, { id: Math.random().toString(36).substr(2, 9), sender, text, type, channel, timestamp: new Date() }]
   })),
 
+  // หมายเหตุ: timeLeft ตัวนี้เป็นคนละตัวกับ tensionTimeLeft นะครับ (น่าจะใช้กับการจับเวลาเทิร์นหลัก) ผมคงไว้ให้ตามเดิม
   aiStatus: 'PLAYER_TURN', turnCount: 0, timeLeft: 60, waitingFor: [], playerActions: [], 
 
   setAiStatus: (status) => set({ aiStatus: status }),
@@ -134,12 +145,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   playerStats: {},
 
   updatePlayerStat: (username, statType, amount) => set((state) => {
-    // ถ้าเพิ่งเข้าห้องมายังไม่มีค่าตั้งต้น ให้สร้างเลือด 100 มานา 50
     const currentStats = state.playerStats[username] || { hp: 100, maxHp: 100, mana: 50, maxMana: 50, statuses: [] };
     const maxVal = statType === 'hp' ? currentStats.maxHp : currentStats.maxMana;
     let newVal = currentStats[statType] + amount;
     
-    // ล็อคไม่ให้เลือดทะลุหลอด หรือติดลบ
     if (newVal > maxVal) newVal = maxVal;
     if (newVal < 0) newVal = 0;
 
@@ -164,5 +173,16 @@ export const useGameStore = create<GameState>((set, get) => ({
         [username]: { ...currentStats, statuses: newStatuses }
       }
     };
-  })
+  }),
+
+  // 🌟 Implementation ของคุณ
+  currentBg: null,
+  setCurrentBg: (bg) => set({ currentBg: bg }),
+
+  // 🌟 แก้ไขตรงนี้ครับ เปลี่ยนจาก timeLeft เป็น tensionTimeLeft ให้หมด
+  isTimerActive: false,
+  tensionTimeLeft: 0, // ตั้งค่าเริ่มต้นให้เป็น 0
+  startTensionTimer: (seconds = 10) => set({ isTimerActive: true, tensionTimeLeft: seconds }),
+  stopTensionTimer: () => set({ isTimerActive: false, tensionTimeLeft: 0 }),
+  tickTensionTimer: () => set((state) => ({ tensionTimeLeft: Math.max(0, state.tensionTimeLeft - 1) })),
 }))
