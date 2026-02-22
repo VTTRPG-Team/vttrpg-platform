@@ -3,26 +3,21 @@ import { use, useEffect, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Stars } from '@react-three/drei'
 import { Physics, usePlane } from '@react-three/cannon'
-import { supabase } from '@/lib/supabase' // <--- เพิ่ม Supabase
+import { supabase } from '@/lib/supabase'
 
-// --- LiveKit Imports (NEW) ---
 import { LiveKitRoom, RoomAudioRenderer } from '@livekit/components-react'
 import '@livekit/components-styles'
 
-// Store
 import { useGameStore } from '@/store/useGameStore'
-
-// Game Components
 import CameraManager from '@/components/game/CameraManager'
 import TableBoard from '@/components/game/TableBoard'
 import Dice from '@/components/game/world/Dice'
 
-// UI Components
 import ChatInterface from '@/components/game/ui/ChatInterface'
 import GameControls from '@/components/game/ui/GameControls'
 import DiceControls from '@/components/game/ui/DiceControls'
 import DiceResultOverlay from '@/components/game/ui/DiceResultOverlay' 
-import VideoOverlay from '@/components/game/ui/VideoOverlay' // <--- เพิ่ม VideoOverlay
+import VideoOverlay from '@/components/game/ui/VideoOverlay'
 
 function PhysicsFloor() {
   const [ref] = usePlane(() => ({ rotation: [-Math.PI / 2, 0, 0], position: [0, 0, 0], type: 'Static' }))
@@ -32,20 +27,16 @@ function PhysicsFloor() {
 export default function RoomPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params) 
   const { viewMode, toggleView } = useGameStore()
-
-  // --- LiveKit Token Logic (NEW) ---
   const [token, setToken] = useState("");
 
   useEffect(() => {
     const fetchToken = async () => {
-      // 1. ดึงข้อมูลเราจาก Supabase
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       
       const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single();
       const username = profile?.username || 'Player';
 
-      // 2. ขอ Token จาก API 
       const res = await fetch(`/api/livekit?room=${id}&username=${username}&userId=${user.id}`);
       const data = await res.json();
       setToken(data.token);
@@ -53,13 +44,11 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     fetchToken();
   }, [id]);
 
-  // ถ้ายังไม่ได้ Token ให้ขึ้นหน้า Loading ดำๆ ไว้ก่อน จะได้ไม่กระตุก
   if (!token) {
     return <div className="w-full h-screen bg-black flex items-center justify-center text-white font-mono animate-pulse">Connecting to Realm...</div>;
   }
 
   return (
-    // ครอบด้วย LiveKitRoom
     <LiveKitRoom
       video={true}
       audio={true}
@@ -69,8 +58,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
       connect={true}
     >
       <main className="relative w-full h-screen overflow-hidden bg-black font-sans select-none">
-        
-        {/* พระเอกเรื่องเสียง: ขาดไม่ได้ */}
         <RoomAudioRenderer />
 
         {/* === LAYER 0: 3D WORLD === */}
@@ -85,23 +72,19 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
               <PhysicsFloor />
               <Dice /> 
               <TableBoard />    
-              <mesh position={[-5, 0.5, 0]}><boxGeometry args={[1,1,1]} /><meshStandardMaterial color="red"/></mesh>
-              <mesh position={[5, 0.5, 0]}><boxGeometry args={[1,1,1]} /><meshStandardMaterial color="blue"/></mesh>
             </Physics>
           </Canvas>
         </div>
 
-        {/* === LAYER 0.5: PLAYER VIDEOS (NEW) === */}
+        {/* === LAYER 0.5: PLAYER VIDEOS === */}
         <div className="absolute top-24 right-6 z-40">
            <VideoOverlay />
         </div>
 
-        {/* === LAYER 1: UI OVERLAY === */}
+        {/* === LAYER 1: UI OVERLAY (พวกปุ่มควบคุมต่างๆ) === */}
         <div className="absolute inset-0 z-10 pointer-events-none flex flex-col justify-between p-4">
-          
           <DiceResultOverlay />
           
-          {/* Header Bar */}
           <div className="w-full flex justify-between items-start z-50">
              <div className="bg-black/40 backdrop-blur px-4 py-2 rounded-lg border border-white/10 text-white text-sm font-mono shadow-lg">
                ROOM: <span className="text-yellow-400">{id}</span>
@@ -115,20 +98,13 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
              </div>
           </div>
 
-          {/* Chat */}
-          <div className="flex-1 flex overflow-hidden relative mt-4">
-             <div className={`h-full z-20 transition-transform duration-500 ease-in-out pointer-events-auto shadow-2xl rounded-xl overflow-hidden ${
-               viewMode === 'TOP_DOWN' ? 'translate-x-0' : '-translate-x-full lg:translate-x-0 lg:opacity-100 opacity-0'
-             }`}>
-               <ChatInterface />
-             </div>
-          </div>
-
-          {/* Dice Button */}
           <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 pointer-events-auto z-50">
               <DiceControls />
           </div>
         </div>
+
+        {/* ✅ งัด ChatInterface ออกมาวางด้านนอกสุด! (ห้ามมี div ขังมันไว้) */}
+        <ChatInterface />
 
       </main>
     </LiveKitRoom>
