@@ -5,6 +5,7 @@ import { ai_gm } from '@/app/ai-gm/ai_gm'
 import { Send, Volume2, MessageSquareText, X, History } from 'lucide-react'
 import { useTextToSpeech } from '@/hooks/useTextToSpeech'
 import { parseAIText } from '@/utils/tagParser'
+import QuickChoices from '@/components/player-actions/QuickChoices'
 
 import { VT323 } from 'next/font/google'
 const vt323 = VT323({ subsets: ['latin'], weight: ['400'] });
@@ -70,6 +71,27 @@ export default function ChatInterface() {
 
   const parsedData = useMemo(() => parseAIText(storyText), [storyText]);
   const displayStory = parsedData.cleanStory; // <-- เราจะเอาตัวนี้ไปโชว์แทน storyText
+
+  useEffect(() => {
+    const handleQuickAction = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const choiceText = customEvent.detail; // ข้อความในปุ่มที่เพื่อนส่งมาให้
+
+      // ถ้า AI ไม่ได้กำลังพิมพ์ และเรายังไม่ได้กดส่ง Action ไปก่อนหน้านี้
+      if (!isAiBusy && !hasSubmittedAction) {
+        sendAiAction(choiceText); // โยนข้อความส่งไปหา AI เลย!
+        stopTensionTimer(); // กดปุ่มแล้ว ต้องหยุดเวลานับถอยหลังด้วย
+      }
+    };
+
+    // เปิดหูรับฟัง Event ที่เพื่อนสร้างไว้
+    window.addEventListener('quick-action-selected', handleQuickAction);
+
+    // ปิดหูเมื่อสลับหน้าเว็บ
+    return () => {
+      window.removeEventListener('quick-action-selected', handleQuickAction);
+    };
+  }, [isAiBusy, hasSubmittedAction, sendAiAction, stopTensionTimer]);
 
   // =========================================================
   // 🧠 ระบบสแกนคำและส่งสัญญาณ FX & AUDIO อัตโนมัติ!
@@ -283,6 +305,8 @@ export default function ChatInterface() {
             {isAiBusy && <span className="animate-pulse ml-1 font-bold inline-block w-2.5 h-4 bg-[#3e2723]"></span>}
           </div>
 
+          <QuickChoices />
+          
           <form onSubmit={handleSendAction} className="flex gap-2 w-full mt-auto pt-3 border-t-2 border-[#8B5A2B]/30">
             <input
               type="text"
