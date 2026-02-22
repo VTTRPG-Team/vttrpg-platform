@@ -65,6 +65,16 @@ interface GameState {
   playerStats: Record<string, PlayerStats>;
   updatePlayerStat: (username: string, statType: 'hp' | 'mana', amount: number) => void;
   setPlayerStatus: (username: string, status: string, action: 'add' | 'remove') => void;
+
+  // 🌟 State ของคุณที่แทรกเพิ่ม
+  currentBg: string | null;
+  setCurrentBg: (bg: string | null) => void;
+  
+  isTimerActive: boolean;
+  tensionTimeLeft: number;
+  startTensionTimer: (seconds?: number) => void;
+  stopTensionTimer: () => void;
+  tickTensionTimer: () => void;
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -134,12 +144,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   playerStats: {},
 
   updatePlayerStat: (username, statType, amount) => set((state) => {
-    // ถ้าเพิ่งเข้าห้องมายังไม่มีค่าตั้งต้น ให้สร้างเลือด 100 มานา 50
     const currentStats = state.playerStats[username] || { hp: 100, maxHp: 100, mana: 50, maxMana: 50, statuses: [] };
     const maxVal = statType === 'hp' ? currentStats.maxHp : currentStats.maxMana;
     let newVal = currentStats[statType] + amount;
     
-    // ล็อคไม่ให้เลือดทะลุหลอด หรือติดลบ
     if (newVal > maxVal) newVal = maxVal;
     if (newVal < 0) newVal = 0;
 
@@ -164,5 +172,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         [username]: { ...currentStats, statuses: newStatuses }
       }
     };
-  })
+  }), // <--- 🌟 แก้ไข: เติมลูกน้ำ (,) ตรงนี้ครับ
+
+  // 🌟 Implementation ของคุณ
+  currentBg: null,
+  setCurrentBg: (bg) => set({ currentBg: bg }),
+
+  isTimerActive: false,
+  tensionTimeLeft: 10,
+  startTensionTimer: (seconds = 10) => set({ isTimerActive: true, timeLeft: seconds }),
+  stopTensionTimer: () => set({ isTimerActive: false, timeLeft: 0 }),
+  tickTensionTimer: () => set((state) => ({ timeLeft: Math.max(0, state.timeLeft - 1) })),
 }))
