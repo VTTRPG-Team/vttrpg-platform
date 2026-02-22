@@ -1,17 +1,15 @@
 'use client'
 import { useBox } from '@react-three/cannon'
-import { useEffect, useRef, useState } from 'react'
-import { useGameStore } from '@/store/useGameStore'
+import { useEffect, useState } from 'react'
+import { useGameStore, DiceRollData } from '@/store/useGameStore'
 import * as THREE from 'three'
 
-export default function Dice() {
-  const { diceState, completeDiceRoll } = useGameStore()
-  
-  // ใช้ State นี้คุมการแสดงผล Mesh (Visible)
-  const [isVisible, setIsVisible] = useState(false)
+// 🌟 คอมโพเนนต์ย่อย: สำหรับควบคุมลูกเต๋า 1 ลูก (ใครกดทอย ก็เสกลูกนี้ขึ้นมา)
+function PhysicalDice({ roll }: { roll: DiceRollData }) {
+  const { finishDiceRoll } = useGameStore()
+  const [isVisible, setIsVisible] = useState(true)
 
   // Physics Hook
-  // allowSleep: false คือหัวใจสำคัญ แก้ปัญหาเต๋าค้าง/ลอย
   const [ref, api] = useBox(() => ({ 
     mass: 1, 
     position: [0, 50, 0], 
@@ -20,34 +18,29 @@ export default function Dice() {
     allowSleep: false 
   }))
 
-  // Ref ป้องกันการทำงานซ้ำซ้อนใน React.StrictMode
-  const isRollingRef = useRef(false)
-
   useEffect(() => {
-    // ทำงานเมื่อ Store สั่ง isRolling = true
-    if (diceState.isRolling) {
-      isRollingRef.current = true;
-      setIsVisible(true); // แสดงตัว
+    // ทำงานเมื่อเต๋าลูกนี้มีสถานะ isRolling = true
+    if (roll.isRolling) {
+      setIsVisible(true);
 
-      // --- STEP 1: RESET PHYSICS (สำคัญมาก) ---
-      // ต้องหยุดแรงเก่าทั้งหมดก่อนย้ายที่ ไม่งั้นจะพุ่งต่อ
-      api.wakeUp(); // ปลุก Physics
+      // --- STEP 1: RESET PHYSICS ---
+      api.wakeUp(); 
       api.velocity.set(0, 0, 0);
       api.angularVelocity.set(0, 0, 0);
       
-      // ย้ายไปจุดปล่อย (สูง 15 หน่วย)
-      api.position.set(0, 15, 0);
+      // สุ่มตำแหน่งปล่อยนิดหน่อย จะได้ไม่ตกทับกันถ้าเพื่อนทอยพร้อมกัน
+      const offsetX = (Math.random() - 0.5) * 4;
+      const offsetZ = (Math.random() - 0.5) * 4;
+      api.position.set(offsetX, 15, offsetZ);
       
-      // ตั้งท่าหมุนเริ่มต้นแบบสุ่ม
       api.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
 
-      // --- STEP 2: APPLY FORCE (ใส่แรงส่ง) ---
-      // รอเสี้ยววินาทีเพื่อให้ตำแหน่ง Update แล้วค่อยดีด
+      // --- STEP 2: APPLY FORCE ---
       const forceTimer = setTimeout(() => {
          api.velocity.set(
-            (Math.random() - 0.5) * 5, // ส่ายซ้ายขวา X
-            -15,                       // พุ่งลงแกน Y (แรงพอประมาณ)
-            (Math.random() - 0.5) * 5  // ส่ายหน้าหลัง Z
+            (Math.random() - 0.5) * 5, 
+            -15,                       
+            (Math.random() - 0.5) * 5  
          );
          api.angularVelocity.set(
             Math.random() * 10, 
@@ -56,24 +49,14 @@ export default function Dice() {
          );
       }, 50);
 
-      // --- STEP 3: FINISH & CALCULATE (จบการทอย) ---
-      // รอ 1.5 วินาที ให้ลูกเต๋าตกและหยุด
+      // --- STEP 3: FINISH ROLL ---
       const finishTimer = setTimeout(() => {
-        // คำนวณเลขผลลัพธ์ที่นี่ (Random)
-        let maxVal = 6;
-        if (diceState.requiredDice === 'D8') maxVal = 8;
-        if (diceState.requiredDice === 'D20') maxVal = 20;
-        const result = Math.floor(Math.random() * maxVal) + 1;
-
-        // ส่งผลลัพธ์กลับ Store -> เพื่อไปเปิด UI 2D
-        completeDiceRoll(result);
+        // 🌟 ส่ง ID ของเต๋าลูกนี้กลับไปปิดสถานะใน Store (ระบบ UI สุ่มเลขมาให้ตั้งแต่ตอนกดปุ่มแล้ว)
+        finishDiceRoll(roll.id);
         
-        // ซ่อน 3D และเก็บกลับที่เดิม
         setIsVisible(false);
-        isRollingRef.current = false;
         api.position.set(0, 50, 0);
         api.velocity.set(0, 0, 0);
-
       }, 1500);
 
       return () => {
@@ -81,15 +64,14 @@ export default function Dice() {
         clearTimeout(finishTimer);
       };
     }
-  }, [diceState.isRolling, diceState.requiredDice, completeDiceRoll, api])
+  }, [roll.isRolling, roll.id, finishDiceRoll, api])
 
-  // ถ้าไม่อยู่ในโหมดทอย ไม่ต้อง Render Mesh
-  if (!isVisible) return null;
+  // ถ้ากลิ้งเสร็จแล้ว หรือไม่ได้ถูกสั่งให้กลิ้ง ให้ซ่อน
+  if (!isVisible || !roll.isRolling) return null;
 
-  // เลือกสีตามประเภทเต๋า
   const getDiceColor = () => {
-    if (diceState.requiredDice === 'D20') return '#f97316'; // ส้ม
-    if (diceState.requiredDice === 'D8') return '#a855f7';  // ม่วง
+    if (roll.diceType === 'D20') return '#f97316'; // ส้ม
+    if (roll.diceType === 'D8') return '#a855f7';  // ม่วง
     return '#06b6d4'; // ฟ้า (D6)
   }
 
@@ -102,5 +84,19 @@ export default function Dice() {
         <lineBasicMaterial color="white" transparent opacity={0.5} />
       </lineSegments>
     </mesh>
+  )
+}
+
+// 🌟 คอมโพเนนต์หลัก: ตัวจัดการลูกเต๋าทั้งหมดในหน้าจอ
+export default function Dice() {
+  const { diceState } = useGameStore()
+
+  return (
+    <>
+      {/* วนลูปสร้างลูกเต๋า 3D ตามจำนวนคนที่กดทอยเข้ามา */}
+      {diceState.activeRolls.map((roll) => (
+        <PhysicalDice key={roll.id} roll={roll} />
+      ))}
+    </>
   )
 }
