@@ -1,14 +1,15 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useLocalParticipant, RoomAudioRenderer } from '@livekit/components-react';
-import { CheckCircle, XCircle, ArrowLeft, Crown, Shield, MessageSquare, Copy, Sword, Mic, MicOff, Video, VideoOff, User, Users, Headphones, HeadphoneOff, Bot, UserCog } from 'lucide-react';
+// 🌟 เพิ่มไอคอน Eye
+import { CheckCircle, XCircle, ArrowLeft, Crown, Shield, MessageSquare, Copy, Sword, Mic, MicOff, Video, VideoOff, User, Users, Headphones, HeadphoneOff, Bot, UserCog, Eye } from 'lucide-react';
 import LobbyChat from '@/components/lobby/LobbyChat';
 import PlayerCard from './PlayerCard';
 import { Cinzel } from 'next/font/google';
 
 const cinzel = Cinzel({ subsets: ['latin'], weight: ['700', '900'] });
 
-export default function WaitingRoomContent({ room, players, messages, setMessages, currentUser, myUsername, localClientId, handleStartGame, handleToggleReady, handleExit, copied, copyRoomId, roomId }: any) {
+export default function WaitingRoomContent({ room, players, messages, setMessages, currentUser, myUsername, localClientId, handleStartGame, handleToggleReady, handleToggleSpectator, handleExit, copied, copyRoomId, roomId }: any) {
   const { localParticipant } = useLocalParticipant();
   const [micOn, setMicOn] = useState(false); 
   const [camOn, setCamOn] = useState(false);
@@ -26,14 +27,20 @@ export default function WaitingRoomContent({ room, players, messages, setMessage
   const toggleDeaf = () => setDeaf(!deaf);
 
   const isHost = currentUser.id === room.host_id;
+  const isMeSpectator = players.find((p:any) => p.id === currentUser.id)?.isSpectator || false;
   const isMeReady = players.find((p:any) => p.id === currentUser.id)?.isReady || false;
-  // ทุกคนต้อง Ready (ยกเว้น Host) ถึงจะเริ่มได้
-  const canStart = players.length > 0 && players.every((p:any) => p.id === room.host_id || p.isReady);
+  
+  // 🌟 แยกประเภทผู้เล่น
+  const activePlayers = players.filter((p:any) => !p.isSpectator);
+  const spectators = players.filter((p:any) => p.isSpectator);
+
+  // เงื่อนไขเริ่มเกม: เช็คเฉพาะคนที่กำลังจะเล่น (Active Players)
+  const canStart = activePlayers.length > 0 && activePlayers.every((p:any) => p.id === room.host_id || p.isReady);
   const hostPlayer = players.find((p:any) => p.id === room.host_id);
   const hostName = hostPlayer ? hostPlayer.name : 'Unknown';
 
-  // 🌟 คำนวณ Slot ว่าง (รวมทุกคน รวมถึง Host แล้วไปหักลบกับ max_players)
-  const emptySlotsCount = Math.max(0, room.max_players - players.length);
+  // 🌟 สล็อตว่าง: นับแค่ Active Players เท่านั้น ไม่นับคนดู
+  const emptySlotsCount = Math.max(0, room.max_players - activePlayers.length);
 
   return (
     <>
@@ -49,7 +56,6 @@ export default function WaitingRoomContent({ room, players, messages, setMessage
              <ArrowLeft size={18} /> Abandon Quest
           </button>
           
-          {/* 🌟 แสดงประเภท GM ด้านบนให้ชัดเจน */}
           <div className="flex items-center gap-2 bg-[#3e2723]/40 border border-[#5d4037] px-4 py-1.5 rounded-full text-[#F4E4BC] text-xs uppercase font-bold tracking-widest">
              {room.gm_type === 'human' ? <><UserCog size={14} className="text-red-400"/> Human GM</> : <><Bot size={14} className="text-blue-400"/> AI Storyteller</>}
           </div>
@@ -77,34 +83,52 @@ export default function WaitingRoomContent({ room, players, messages, setMessage
          </div>
 
          <div className="flex-1 flex flex-col gap-8 h-[80vh] z-20">
+            {/* 🌟 พื้นที่จัดแสดงการ์ดผู้เล่น */}
             <div className="flex-1 bg-black/20 rounded-lg border border-[#3e2723]/30 p-4 relative overflow-y-auto custom-scrollbar pointer-events-auto">
-                <div className="flex flex-wrap justify-start content-start gap-4 h-full">
+                <div className="flex flex-col gap-6 h-full">
                     
-                    {/* 🌟 Render AI GM Card (ถ้าห้องนี้ใช้ AI) */}
-                    {room.gm_type === 'ai' && (
-                        <div className="relative w-36 md:w-44 flex-shrink-0 bg-blue-900/10 border-2 border-blue-900/50 rounded-lg p-3 flex flex-col items-center">
-                            <div className="absolute top-2 right-2 w-3 h-3 z-20 rounded-full bg-blue-500 shadow-[0_0_10px_#3b82f6] animate-pulse"></div>
-                            <div className="w-20 h-20 rounded-full border-2 border-blue-500 overflow-hidden mb-3 bg-[#0f0a08] flex items-center justify-center">
-                               <Bot size={40} className="text-blue-400" />
-                            </div>
-                            <div className="text-center w-full">
-                                <div className={`${cinzel.className} text-blue-200 text-xs md:text-sm font-bold truncate`}>Gemini AI</div>
-                                <div className="text-[8px] md:text-[10px] text-blue-500 uppercase tracking-widest">Game Master</div>
+                    {/* --- โซน Adventurers (ผู้เล่นตัวจริง) --- */}
+                    <div>
+                        <h3 className="text-[#a1887f] text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2"><Sword size={14}/> Adventurers ({activePlayers.length}/{room.max_players})</h3>
+                        <div className="flex flex-wrap justify-start content-start gap-4">
+                            {room.gm_type === 'ai' && (
+                                <div className="relative w-36 md:w-44 flex-shrink-0 bg-blue-900/10 border-2 border-blue-900/50 rounded-lg p-3 flex flex-col items-center">
+                                    <div className="absolute top-2 right-2 w-3 h-3 z-20 rounded-full bg-blue-500 shadow-[0_0_10px_#3b82f6] animate-pulse"></div>
+                                    <div className="w-20 h-20 rounded-full border-2 border-blue-500 overflow-hidden mb-3 bg-[#0f0a08] flex items-center justify-center">
+                                    <Bot size={40} className="text-blue-400" />
+                                    </div>
+                                    <div className="text-center w-full">
+                                        <div className={`${cinzel.className} text-blue-200 text-xs md:text-sm font-bold truncate`}>Gemini AI</div>
+                                        <div className="text-[8px] md:text-[10px] text-blue-500 uppercase tracking-widest">Game Master</div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activePlayers.map((p: any) => (
+                                <PlayerCard key={p.uniqueKey} playerData={p} roomHostId={room.host_id} isCurrentUser={p.id === currentUser.id} toggleMic={toggleMic} toggleCam={toggleCam} micOn={micOn} camOn={camOn} />
+                            ))}
+                            
+                            {Array.from({ length: emptySlotsCount }).map((_, i) => (
+                                <div key={`empty-${i}`} className="w-36 md:w-44 h-[170px] border-2 border-dashed border-[#3e2723]/30 rounded-lg p-3 flex flex-col items-center justify-center opacity-50 bg-[#0f0a08]/30 flex-shrink-0">
+                                    <div className="w-16 h-16 rounded-full bg-[#0f0a08] flex items-center justify-center mb-2 border border-[#3e2723]/50"><User size={24} className="text-[#3e2723]" /></div>
+                                    <span className="text-[10px] text-[#3e2723] uppercase tracking-widest font-bold">Empty</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* --- โซน Spectators (ผู้ชม) จะโผล่มาเมื่อมีคนดู --- */}
+                    {spectators.length > 0 && (
+                        <div className="mt-2 pt-4 border-t border-[#3e2723]/50">
+                            <h3 className="text-[#a1887f] text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2"><Eye size={14}/> Spectators ({spectators.length})</h3>
+                            <div className="flex flex-wrap justify-start content-start gap-4">
+                                {spectators.map((p: any) => (
+                                    <PlayerCard key={p.uniqueKey} playerData={p} roomHostId={room.host_id} isCurrentUser={p.id === currentUser.id} toggleMic={toggleMic} toggleCam={toggleCam} micOn={micOn} camOn={camOn} />
+                                ))}
                             </div>
                         </div>
                     )}
 
-                    {players.map((p: any) => (
-                        <PlayerCard key={p.uniqueKey} playerData={p} roomHostId={room.host_id} isCurrentUser={p.id === currentUser.id} toggleMic={toggleMic} toggleCam={toggleCam} micOn={micOn} camOn={camOn} />
-                    ))}
-                    
-                    {/* 🌟 Render Empty Slots (คำนวณถูกเป๊ะแล้ว) */}
-                    {Array.from({ length: emptySlotsCount }).map((_, i) => (
-                        <div key={`empty-${i}`} className="w-36 md:w-44 h-[170px] border-2 border-dashed border-[#3e2723]/30 rounded-lg p-3 flex flex-col items-center justify-center opacity-50 bg-[#0f0a08]/30 flex-shrink-0">
-                            <div className="w-16 h-16 rounded-full bg-[#0f0a08] flex items-center justify-center mb-2 border border-[#3e2723]/50"><User size={24} className="text-[#3e2723]" /></div>
-                            <span className="text-[10px] text-[#3e2723] uppercase tracking-widest font-bold">Empty</span>
-                        </div>
-                    ))}
                 </div>
             </div>
 
@@ -126,15 +150,25 @@ export default function WaitingRoomContent({ room, players, messages, setMessage
                   </div>
                </div>
 
-               <div>
+               <div className="flex gap-3">
                  {isHost ? (
                     <button onClick={handleStartGame} disabled={!canStart} className={`relative px-8 py-3 rounded font-bold text-lg uppercase tracking-[0.2em] transition-all duration-300 ease-out flex items-center justify-center gap-3 ${canStart ? 'bg-gradient-to-r from-[#8B4513] to-[#5A2D0C] text-[#F4E4BC] border-2 border-[#F4E4BC]/50 hover:text-white hover:border-[#F4E4BC] hover:shadow-[0_0_25px_rgba(244,228,188,0.4)] hover:scale-105 active:scale-95 cursor-pointer' : 'bg-[#1a0f0a] text-[#5d4037] border-2 border-[#3e2723] cursor-not-allowed grayscale opacity-50'}`}>
-                       <Sword size={22} className={canStart ? "animate-pulse text-yellow-400" : ""} /> {players.length > 1 && !canStart ? "Waiting..." : "Venture Forth"}
+                       <Sword size={22} className={canStart ? "animate-pulse text-yellow-400" : ""} /> {activePlayers.length > 1 && !canStart ? "Waiting..." : "Venture Forth"}
                     </button>
                  ) : (
-                    <button onClick={handleToggleReady} className={`relative px-10 py-3 rounded font-bold text-lg uppercase tracking-[0.2em] transition-all duration-300 border-2 flex items-center justify-center gap-3 hover:scale-105 active:scale-95 cursor-pointer z-[999] ${isMeReady ? 'bg-green-900/80 border-green-500 text-green-100 hover:bg-green-800 shadow-[0_0_20px_rgba(34,197,94,0.3)]' : 'bg-[#3e2723] border-[#F4E4BC] text-[#F4E4BC] hover:bg-[#5d4037] hover:shadow-[0_0_15px_rgba(244,228,188,0.2)]'}`}>
-                       {isMeReady ? <><CheckCircle size={22} /> Ready</> : <><XCircle size={22} /> Not Ready</>}
-                    </button>
+                    <>
+                       {/* 🌟 ปุ่มสลับโหมด Spectator (เฉพาะลูกเรือ) */}
+                       <button onClick={handleToggleSpectator} className="px-4 py-3 rounded border border-[#5d4037] text-[#a1887f] hover:bg-[#1a0f0a] hover:text-[#F4E4BC] transition-all flex items-center gap-2 text-sm uppercase font-bold tracking-widest active:scale-95">
+                          {isMeSpectator ? <><Sword size={18}/> Play</> : <><Eye size={18}/> Spectate</>}
+                       </button>
+
+                       {/* ถ้าเป็น Spectator จะซ่อนปุ่ม Ready ไว้ เพราะไม่ต้องกดพร้อม */}
+                       {!isMeSpectator && (
+                          <button onClick={handleToggleReady} className={`relative px-10 py-3 rounded font-bold text-lg uppercase tracking-[0.2em] transition-all duration-300 border-2 flex items-center justify-center gap-3 hover:scale-105 active:scale-95 cursor-pointer z-[999] ${isMeReady ? 'bg-green-900/80 border-green-500 text-green-100 hover:bg-green-800 shadow-[0_0_20px_rgba(34,197,94,0.3)]' : 'bg-[#3e2723] border-[#F4E4BC] text-[#F4E4BC] hover:bg-[#5d4037] hover:shadow-[0_0_15px_rgba(244,228,188,0.2)]'}`}>
+                             {isMeReady ? <><CheckCircle size={22} /> Ready</> : <><XCircle size={22} /> Not Ready</>}
+                          </button>
+                       )}
+                    </>
                  )}
                </div>
             </div>

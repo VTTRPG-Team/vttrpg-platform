@@ -57,8 +57,8 @@ export default function ChatInterface() {
   
   const processedStoryRef = useRef<string>('');
 
-  const { speak } = useTextToSpeech();
-  const { messages, loading, currentAiText, sendAiAction, sendPartyMessage, currentUserId, waitingFor, hasSubmittedAction, isGameStarted } = ai_gm();
+  const { speak } = useTextToSpeech();const { messages, loading, currentAiText, sendAiAction, sendPartyMessage, currentUserId, waitingFor, hasSubmittedAction, isGameStarted, isSpectator } = ai_gm();
+  
 
   const isAiBusy = loading || (!isGameStarted && messages.length === 0);
   
@@ -293,8 +293,9 @@ export default function ChatInterface() {
               type="text"
               value={actionInput}
               onChange={(e) => setActionInput(e.target.value)}
-              disabled={isAiBusy || hasSubmittedAction} 
+              disabled={isAiBusy || hasSubmittedAction || isSpectator} 
               placeholder={
+                isSpectator ? "👀 You are spectating..." :
                 !isGameStarted ? "Setting up..." :
                 isAiBusy ? "AI is typing..." : 
                 hasSubmittedAction ? "Waiting..." : 

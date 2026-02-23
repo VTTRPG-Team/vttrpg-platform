@@ -21,6 +21,9 @@ export const ai_gm = () => {
   const [players, setPlayers] = useState<string[]>([]);
   const [hostId, setHostId] = useState<string | null>(null); 
   const [roomDescription, setRoomDescription] = useState<string>("");
+  
+  // 🌟 เพิ่ม State เช็คว่าเราเป็นคนดูหรือเปล่า
+  const [isSpectator, setIsSpectator] = useState<boolean>(false);
 
   useEffect(() => {
     const initData = async () => {
@@ -35,18 +38,27 @@ export const ai_gm = () => {
         }
       }
 
-      if (roomId) {
+      if (roomId && user) {
         const { data: roomData } = await supabase.from('rooms').select('host_id, description').eq('id', roomId).single();
         if (roomData) {
            setHostId(roomData.host_id);
-           if (roomData.description) setRoomDescription(roomData.description); // เก็บลง State
+           if (roomData.description) setRoomDescription(roomData.description);
         }
 
-        const { data: rp } = await supabase.from('room_players').select('user_id').eq('room_id', roomId);
+        // 🌟 ดึง is_spectator มาเช็คด้วย
+        const { data: rp } = await supabase.from('room_players').select('user_id, is_spectator').eq('room_id', roomId);
         if (rp) {
-          const userIds = rp.map(r => r.user_id);
-          const { data: profs } = await supabase.from('profiles').select('username').in('id', userIds);
-          if (profs) setPlayers(profs.map(p => p.username ? p.username.trim() : 'Player'));
+          // 1. เช็คว่าตัวเราเองเป็นคนดูไหม
+          const myData = rp.find(r => r.user_id === user.id);
+          if (myData?.is_spectator) setIsSpectator(true);
+
+          // 2. คัดเอาเฉพาะ "ผู้เล่นตัวจริง" (ไม่เอาคนดู) มานับรวมในเกม
+          const activeUserIds = rp.filter(r => !r.is_spectator).map(r => r.user_id);
+          
+          if (activeUserIds.length > 0) {
+             const { data: profs } = await supabase.from('profiles').select('username').in('id', activeUserIds);
+             if (profs) setPlayers(profs.map(p => p.username ? p.username.trim() : 'Player'));
+          }
         }
       }
     };
@@ -85,7 +97,6 @@ export const ai_gm = () => {
     const channel = pusher.subscribe(`room-${roomId}`);
     
     channel.bind('party-chat-event', (data: any) => {
-      // 🌟 รับ statData มาด้วย
       const { message, senderId, actionType, diceData, statData } = data;
       if (senderId === localClientId) return; 
 
@@ -104,23 +115,8 @@ export const ai_gm = () => {
       else if (actionType === 'DICE_ROLL' && diceData) {
         useGameStore.getState().addDiceRoll(diceData.rollId, diceData.userId, diceData.username, diceData.diceType, diceData.result, false);
       }
-      // 🌟 EVENT ใหม่: รับข้อมูลเพื่อนโดนดาเมจ/ฮีล (เพื่อเด้งตัวเลขที่เครื่องเราด้วย)
       else if (actionType === 'STAT_CHANGE' && statData) {
         useGameStore.getState().triggerStatChange(statData.username, statData.amount, statData.type);
-      }
-      // 🌟 EVENT ใหม่: ทอยเสร็จแล้ว - ผลลัพธ์ส่งไป AI
-      else if (actionType === 'DICE_COMPLETE' || actionType === 'DICE_TIMEOUT') {
-        if (message && message.text) {
-          setMessages(prev => prev.some(m => m.id === message.id) ? prev : [...prev, message]);
-          // 🌟 ถ้าทอยเสร็จด้วย TIMEOUT ให้ส่งข้อความให้ AI ลงการตัดสินใจต่อไป
-          if (actionType === 'DICE_TIMEOUT' && currentUserId === hostId) {
-            // Wait a bit then trigger AI to continue the game
-            setTimeout(() => {
-              const aggregatedText = `The following occurred: ${message.text}. Continue the game story based on this situation.`;
-              triggerAskGemini(aggregatedText);
-            }, 1000);
-          }
-        }
       }
       else if (message && message.text) { 
         setMessages(prev => prev.some(m => m.id === message.id) ? prev : [...prev, message]);
@@ -141,6 +137,8 @@ export const ai_gm = () => {
   const isGameStarted = lastAiMsgIndex !== -1;
   const currentTurnActions = isGameStarted ? aiMessages.slice(lastAiMsgIndex + 1).filter(m => m.type === 'USER') : [];
   const uniqueSubmitted = Array.from(new Set(currentTurnActions.map(m => m.sender)));
+  
+  // 🌟 AI จะรอแค่เฉพาะคนที่มีชื่อใน activeUserIds เท่านั้น
   const waitingFor = players.filter(p => !uniqueSubmitted.includes(p));
   const hasSubmittedAction = uniqueSubmitted.includes(myUsername);
 
@@ -162,11 +160,10 @@ export const ai_gm = () => {
          body: JSON.stringify({ 
             prompt: aggregatedText, 
             history: aiHistory,
-            description: roomDescription // 🌟 ส่งเนื้อเรื่องที่ตั้งไว้ไปให้ AI ตรงนี้
+            description: roomDescription 
          }) 
       });
       const data = await response.json();
-      console.log(`[AI GM] เทิร์นนี้ตอบโดยโมเดล:`, data.modelUsed);
       let text = data.text;
 
       if (!text) throw new Error("No text from AI");
@@ -216,6 +213,9 @@ export const ai_gm = () => {
   };
 
   const sendAiAction = async (text: string) => {
+    // 🌟 บล็อคไม่ให้ Spectator แอบพิมพ์
+    if (isSpectator) return;
+    
     const msg: UIMessage = { id: `ai-usr-${Date.now()}`, userId: currentUserId, sender: myUsername, text, type: 'USER', channel: 'AI' };
     setMessages(prev => [...prev, msg]);
     
@@ -235,5 +235,6 @@ export const ai_gm = () => {
     checkHistory();
   }, [roomId, players, hostId, currentUserId]);
 
-  return { messages, loading, currentAiText, sendAiAction, sendPartyMessage, currentUserId, myUsername, waitingFor, hasSubmittedAction, isGameStarted };
+  // 🌟 ส่ง isSpectator ออกไปให้ UI ใช้งานด้วย
+  return { messages, loading, currentAiText, sendAiAction, sendPartyMessage, currentUserId, myUsername, waitingFor, hasSubmittedAction, isGameStarted, isSpectator };
 };
