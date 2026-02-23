@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useParticipants, VideoTrack, useParticipantTracks } from '@livekit/components-react';
 import { Track, ParticipantEvent } from 'livekit-client';
-import { Mic, MicOff, Video, VideoOff } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, Eye } from 'lucide-react';
 import { Cinzel } from 'next/font/google';
 
 const cinzel = Cinzel({ subsets: ['latin'], weight: ['700', '900'] });
@@ -26,12 +26,14 @@ export default function PlayerCard({ playerData, roomHostId, isCurrentUser, togg
   const isMicActive = lkParticipant?.isMicrophoneEnabled;
   const isVideoVisible = videoTrack?.publication?.track && !videoTrack.publication?.isMuted;
   const isHost = roomHostId === playerData.id;
+  const isSpectator = playerData.isSpectator; // 🌟 เช็คว่าเป็นการ์ดของคนดูไหม
 
   return (
-    <div className={`relative group w-36 md:w-44 flex-shrink-0 bg-[#1a0f0a] border rounded-lg p-3 flex flex-col items-center transition-all duration-300 ${isSpeaking ? 'border-green-500 shadow-[0_0_20px_#22c55e] scale-105 z-20' : 'border-[#3e2723] hover:border-[#F4E4BC]/50 hover:shadow-lg'}`}>
+    // 🌟 ถ้าเป็น Spectator การ์ดจะดูทึบๆ หน่อย ให้แยกความแตกต่าง
+    <div className={`relative group w-36 md:w-44 flex-shrink-0 bg-[#1a0f0a] border rounded-lg p-3 flex flex-col items-center transition-all duration-300 ${isSpeaking ? 'border-green-500 shadow-[0_0_20px_#22c55e] scale-105 z-20' : 'border-[#3e2723] hover:border-[#F4E4BC]/50 hover:shadow-lg'} ${isSpectator ? 'opacity-70 hover:opacity-100' : ''}`}>
       
-      {/* Ready Badge: Host ไม่ต้องมี Ready Badge */}
-      {!isHost && (
+      {/* Ready Badge: ปิดซ่อนถ้าเป็น Host หรือเป็น Spectator */}
+      {!isHost && !isSpectator && (
          <div className={`absolute top-2 right-2 w-3 h-3 z-20 rounded-full transition-all duration-300 ${playerData.isReady ? 'bg-green-500 shadow-[0_0_10px_#22c55e] scale-125' : 'bg-red-900/50'}`}></div>
       )}
       
@@ -39,7 +41,7 @@ export default function PlayerCard({ playerData, roomHostId, isCurrentUser, togg
         {isVideoVisible ? (
            <VideoTrack trackRef={videoTrack} className="w-full h-full object-cover transform scale-x-[-1]" />
         ) : (
-           <img src={playerData.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${playerData.id}`} alt="Avatar" className="w-full h-full object-cover" />
+           <img src={playerData.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${playerData.id}`} alt="Avatar" className="w-full h-full object-cover grayscale-[20%]" />
         )}
 
         {isCurrentUser && (
@@ -60,7 +62,10 @@ export default function PlayerCard({ playerData, roomHostId, isCurrentUser, togg
       
       <div className="text-center w-full">
           <div className={`${cinzel.className} text-[#F4E4BC] text-xs md:text-sm font-bold truncate`}>{playerData.name}</div>
-          <div className="text-[8px] md:text-[10px] text-[#5d4037] uppercase tracking-widest">{playerData.role || 'Adventurer'}</div>
+          {/* 🌟 แสดงคำว่า Spectator ถ้าเป็นผู้ชม */}
+          <div className="text-[8px] md:text-[10px] text-[#5d4037] uppercase tracking-widest flex justify-center items-center gap-1">
+             {isSpectator ? <><Eye size={10} className="text-[#a1887f]"/> Spectator</> : (playerData.role || 'Adventurer')}
+          </div>
       </div>
 
       <div className={`mt-2 transition-all ${isSpeaking ? 'text-green-500 scale-125' : 'text-[#3e2723]'}`}>
