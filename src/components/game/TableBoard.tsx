@@ -1,59 +1,45 @@
 'use client'
 import { useState, useEffect } from 'react'
-// ลบ import { Html } from '@react-three/drei' ออกไปได้เลยถ้าไม่ได้ใช้ที่อื่นแล้ว
 import { supabase } from '@/lib/supabase'
 import { useParams } from 'next/navigation'
 import AIAsset from '@/app/ai-gm/ai_asset'
+// 🌟 1. Import Store
+import { useGameStore } from '@/store/useGameStore'
+import { useTexture } from '@react-three/drei' // ไว้แปะรูปลงเหรียญ
+
+// 🌟 Component สำหรับวาดเหรียญ Token 1 อัน
+function TokenMesh({ url, x, z }: { url: string, x: number, z: number }) {
+  const texture = useTexture(url);
+  return (
+    // y = 0.05 คือลอยเหนือโต๊ะนิดนึง จะได้ไม่จม
+    <mesh position={[x, 0.05, z]} rotation={[-Math.PI / 2, 0, 0]} castShadow>
+      {/* ใช้ cylinder แบบแบนๆ ให้ดูเหมือนเหรียญ */}
+      <cylinderGeometry args={[0.5, 0.5, 0.05, 32]} />
+      <meshStandardMaterial map={texture} />
+    </mesh>
+  );
+}
 
 export default function TableBoard() {
   const params = useParams()
   const roomId = params?.id as string
-  const [boardState, setBoardState] = useState({ 
-    imageUrl: null, 
-    isGenerating: false 
-  })
+  const [boardState, setBoardState] = useState({ imageUrl: null, isGenerating: false })
+  
+  // 🌟 2. ดึง Tokens มาจาก Store
+  const { tokens } = useGameStore();
 
   useEffect(() => {
     if (!roomId) return
+    supabase.from('rooms').select('board_image_url, is_image_generating').eq('id', roomId).single().then(({ data }) => {
+      if (data) setBoardState({ imageUrl: data.board_image_url, isGenerating: data.is_image_generating })
+    })
 
-    // 1. Load Initial
-    supabase
-      .from('rooms')
-      .select('board_image_url, is_image_generating')
-      .eq('id', roomId)
-      .single()
-      .then(({ data }) => {
-        if (data) {
-          setBoardState({ 
-            imageUrl: data.board_image_url, 
-            isGenerating: data.is_image_generating 
-          })
-        }
-      })
+    const channel = supabase.channel(`table_${roomId}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, (payload: any) => {
+        setBoardState({ imageUrl: payload.new.board_image_url, isGenerating: payload.new.is_image_generating })
+      }).subscribe()
 
-    // 2. Listen Realtime
-    const channel = supabase
-      .channel(`table_${roomId}`)
-      .on(
-        'postgres_changes',
-        { 
-          event: 'UPDATE', 
-          schema: 'public', 
-          table: 'rooms', 
-          filter: `id=eq.${roomId}` 
-        },
-        (payload: any) => {
-          setBoardState({
-            imageUrl: payload.new.board_image_url,
-            isGenerating: payload.new.is_image_generating
-          })
-        }
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
+    return () => { supabase.removeChannel(channel) }
   }, [roomId])
 
   return (
@@ -64,12 +50,13 @@ export default function TableBoard() {
         <meshStandardMaterial color="#3d2c1d" />
       </mesh>
 
-      {/* กระดาน AI */}
-      <AIAsset 
-        imageUrl={boardState.imageUrl} 
-        isGenerating={boardState.isGenerating} 
-      />
+      {/* กระดานพื้น (แมพ) */}
+      <AIAsset imageUrl={boardState.imageUrl} isGenerating={boardState.isGenerating} />
       
+      {/* 🌟 3. วาง Token ทั้งหมดที่ GM กดสปอว์นออกมา */}
+      {tokens.map(token => (
+         <TokenMesh key={token.id} url={token.url} x={token.x} z={token.z} />
+      ))}
     </group>
   )
 }

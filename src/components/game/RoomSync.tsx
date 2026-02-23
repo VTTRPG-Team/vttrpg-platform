@@ -37,6 +37,11 @@ export default function RoomSync({ roomId, currentUserId }: { roomId: string, cu
             const { rollId, userId, username, diceType, result } = data.diceData;
             addDiceRoll(rollId, userId, username, diceType, result, false);
         }
+
+        // 🌟 เพิ่มโค้ดรับ Token ตรงนี้
+        if (data.actionType === 'SPAWN_TOKEN' && !isMe) {
+            useGameStore.getState().addToken(data.tokenData);
+        }
     });
 
     return () => { pusher.unsubscribe(`room-${roomId}`); pusher.disconnect(); };
