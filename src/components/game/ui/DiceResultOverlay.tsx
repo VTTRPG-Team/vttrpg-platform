@@ -65,21 +65,63 @@ function SingleDice({ roll }: { roll: DiceRollData }) {
 // --- Main Overlay (ลานประลอง) ---
 export default function DiceResultOverlay() {
   const { diceState, closeDiceArena } = useGameStore()
-  const { activeRolls, isActive, requiredDice } = diceState
+  const { activeRolls, isActive, requiredDice, targetPlayers } = diceState
+  const [timeoutWarning, setTimeoutWarning] = useState(false);
 
   // ปิดหน้าต่างอัตโนมัติเมื่อทุกคนทอยเสร็จแล้ว
   useEffect(() => {
     if (!isActive || activeRolls.length === 0) return;
 
+    // 🌟 เช็คว่าทุกคนทอยเสร็จแล้วหรือยัง
     const allFinished = activeRolls.every(roll => !roll.isRolling);
+    
     if (allFinished) {
-      // รอให้ดูผล 3 วินาที แล้วปิดลานเต๋า
-      const timer = setTimeout(() => {
-        closeDiceArena();
-      }, 3000);
-      return () => clearTimeout(timer);
+      // 🌟 ตรวจสอบว่าเรามีลูกเต๋าจากผู้เล่นที่ต้องการครบหรือไม่
+      let hasAllRequiredPlayers = true;
+      
+      // ถ้า targetPlayers มีสมาชิก ต้องเช็คว่าทุกคนในลิสต์ได้ทอยแล้ว
+      if (targetPlayers && targetPlayers.length > 0 && !targetPlayers.includes('ALL')) {
+        for (const requiredPlayer of targetPlayers) {
+          const hasPlayerRolled = activeRolls.some(roll => 
+            roll.username.toLowerCase() === requiredPlayer.toLowerCase()
+          );
+          if (!hasPlayerRolled) {
+            hasAllRequiredPlayers = false;
+            break;
+          }
+        }
+      }
+      
+      // 🌟 ถ้าทุกคนทอยแล้ว ให้รอดูผล 3 วินาที แล้วปิดลานเต๋า
+      if (hasAllRequiredPlayers) {
+        setTimeoutWarning(false);
+        const timer = setTimeout(() => {
+          closeDiceArena();
+          setTimeoutWarning(false);
+        }, 3000);
+        return () => clearTimeout(timer);
+      }
+    } else {
+      setTimeoutWarning(false);
     }
-  }, [isActive, activeRolls, closeDiceArena]);
+  }, [isActive, activeRolls, closeDiceArena, targetPlayers]);
+
+  // 🌟 ตั้ง Safety Timeout: ถ้ารอมากกว่า 10 วินาที ให้ปิดเอาเอง
+  useEffect(() => {
+    if (!isActive) return;
+    
+    const safetyTimer = setTimeout(() => {
+      if (isActive) {
+        console.warn("Dice rolling timeout - closing arena forcefully");
+        setTimeoutWarning(true);
+        setTimeout(() => {
+          closeDiceArena();
+        }, 2000); // แสดง warning 2 วินาที แล้วค่อยปิด
+      }
+    }, 10000); // 10 วินาที
+    
+    return () => clearTimeout(safetyTimer);
+  }, [isActive, closeDiceArena]);
 
   if (!isActive) return null;
 
@@ -101,6 +143,14 @@ export default function DiceResultOverlay() {
           <SingleDice key={roll.id} roll={roll} />
         ))}
       </div>
+
+      {/* 🌟 แสดง Timeout Warning ถ้าติดอยู่เกิน 10 วินาที */}
+      {timeoutWarning && (
+        <div className="absolute bottom-24 bg-red-900/80 border-2 border-red-400 text-red-200 px-6 py-3 rounded-lg backdrop-blur-md animate-pulse text-center">
+          <p className="font-bold text-sm">⚠️ Timeout: Some players didn't roll in time</p>
+          <p className="text-xs mt-1">Closing dice arena...</p>
+        </div>
+      )}
       
     </div>
   )

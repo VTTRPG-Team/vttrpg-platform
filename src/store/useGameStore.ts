@@ -185,7 +185,16 @@ export const useGameStore = create<GameState>((set, get) => ({
   })),
 
   clearPendingSubmit: () => set((state) => ({ diceState: { ...state.diceState, pendingSubmit: null } })),
-  closeDiceArena: () => set((state) => ({ diceState: { ...state.diceState, isActive: false, activeRolls: [] } })),
+  closeDiceArena: () => set((state) => ({ 
+    diceState: { 
+      isActive: false, 
+      activeRolls: [], 
+      requiredDice: null,
+      targetPlayers: [],
+      canRoll: false,
+      pendingSubmit: null
+    } 
+  })),
 
   playerStats: {},
 

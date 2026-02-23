@@ -104,7 +104,7 @@ export default function DiceControl() {
   }
 
   return (
-    <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[100] flex flex-col items-center gap-4 pointer-events-auto w-full max-w-sm bg-black/60 p-8 rounded-xl backdrop-blur-md shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-[#3e2723]">
+    <div className="relative flex flex-col items-center gap-4 pointer-events-auto w-full max-w-sm bg-black/60 p-8 rounded-xl backdrop-blur-md shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-[#3e2723]">
       
       {/* 🏷️ ป้ายประกาศว่าต้องทอยเต๋าอะไร พร้อมปุ่ม Debug */}
       <div className="relative w-full flex justify-center items-center">
