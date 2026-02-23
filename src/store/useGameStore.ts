@@ -4,7 +4,7 @@ export type MessageType = 'USER' | 'SYSTEM' | 'AI';
 export type ChatTab = 'PARTY' | 'AI_GM';
 export type ChatChannel = 'PARTY' | 'AI';
 export type AiStatus = 'IDLE' | 'PLAYER_TURN' | 'WAITING_OTHERS' | 'THINKING' | 'TYPING';
-export type DiceType = 'D6' | 'D8' | 'D20' | null;
+export type DiceType = 'D4' | 'D6' | 'D8' | 'D10' | 'D12' | 'D20' | 'D100' | null;
 
 export interface ChatMessage {
   id: string; sender: string; text: string; type: MessageType; channel: ChatChannel; timestamp: Date;
