@@ -108,6 +108,20 @@ export const ai_gm = () => {
       else if (actionType === 'STAT_CHANGE' && statData) {
         useGameStore.getState().triggerStatChange(statData.username, statData.amount, statData.type);
       }
+      // 🌟 EVENT ใหม่: ทอยเสร็จแล้ว - ผลลัพธ์ส่งไป AI
+      else if (actionType === 'DICE_COMPLETE' || actionType === 'DICE_TIMEOUT') {
+        if (message && message.text) {
+          setMessages(prev => prev.some(m => m.id === message.id) ? prev : [...prev, message]);
+          // 🌟 ถ้าทอยเสร็จด้วย TIMEOUT ให้ส่งข้อความให้ AI ลงการตัดสินใจต่อไป
+          if (actionType === 'DICE_TIMEOUT' && currentUserId === hostId) {
+            // Wait a bit then trigger AI to continue the game
+            setTimeout(() => {
+              const aggregatedText = `The following occurred: ${message.text}. Continue the game story based on this situation.`;
+              triggerAskGemini(aggregatedText);
+            }, 1000);
+          }
+        }
+      }
       else if (message && message.text) { 
         setMessages(prev => prev.some(m => m.id === message.id) ? prev : [...prev, message]);
         if (message.channel === 'AI' && message.type === 'USER') {

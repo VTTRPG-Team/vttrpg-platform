@@ -88,7 +88,7 @@ function AIGMRoom({ id, currentUserId, myUsername }: any) {
              </div>
           </div>
 
-          <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 pointer-events-auto z-50">
+          <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 pointer-events-auto z-[10000]">
               <DiceControls />
           </div>
 
