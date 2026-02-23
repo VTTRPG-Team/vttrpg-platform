@@ -25,6 +25,9 @@ import AudioEngine from '@/components/game/ui/AudioEngine'
 import CursorOverlay from '@/components/player-actions/CursorOverlay' 
 import QuickChoices from '@/components/player-actions/QuickChoices' 
 
+// 🌟 แก้ Path ให้ชี้ไปที่โฟลเดอร์ game/ui/ (ถ้าคุณเซฟไว้ตรงนี้)
+import TutorialOverlay from '@/components/game/ui/TutorialOverlay' 
+
 function PhysicsFloor() {
   const [ref] = usePlane(() => ({ rotation: [-Math.PI / 2, 0, 0], position: [0, 0, 0], type: 'Static' }))
   return <mesh ref={ref as any} visible={false}><planeGeometry args={[20, 20]} /></mesh>
@@ -72,6 +75,9 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
       <main className="relative w-full h-screen overflow-hidden bg-black font-sans select-none">
         <RoomAudioRenderer />
 
+        {/* 🌟 วาง TutorialOverlay ไว้ตรงนี้ */}
+        <TutorialOverlay />
+
         {/* === LAYER 0: 3D WORLD === */}
         <div className="absolute inset-0 z-0 pointer-events-auto">
           <Canvas shadows>
@@ -94,7 +100,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
         </div>
 
         {/* === LAYER 1: UI OVERLAY === */}
-        {/* 🌟 ยุบรวม div เหลือแค่อันเดียวแล้ว! */}
         <div className="absolute inset-0 z-50 pointer-events-none flex flex-col justify-between p-4">
           
           <QuickChoices />
@@ -120,7 +125,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
               <DiceControls />
           </div>
 
-          {/* Chat Interface ไว้ด้านล่างซ้าย (ถ้าโค้ดเดิมซ่อนเข้าออกได้ ก็ยังใช้งานได้ปกติ) */}
           <div className="absolute bottom-4 left-4 z-50 pointer-events-auto max-h-[50vh]">
               <ChatInterface />
           </div>

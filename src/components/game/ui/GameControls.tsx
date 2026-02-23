@@ -12,18 +12,16 @@ export default function GameControls() {
 
   const { isPaused, togglePause } = useGameStore()
 
-  // --- Realtime Vote States ---
   const [voteActive, setVoteActive] = useState(false)
   const [yesVotes, setYesVotes] = useState(0)
   const [noVotes, setNoVotes] = useState(0)
   const [neededVotes, setNeededVotes] = useState(1)
-  const [totalPlayers, setTotalPlayers] = useState(1) // 🌟 เพิ่มตัวแปรนับคนทั้งหมด
+  const [totalPlayers, setTotalPlayers] = useState(1) 
   const [hasVoted, setHasVoted] = useState(false)
-  const [isInitiator, setIsInitiator] = useState(false) // 🌟 จำว่าเราเป็นคนเริ่มโหวตไหม
+  const [isInitiator, setIsInitiator] = useState(false) 
 
   const localClientId = useRef(Math.random().toString(36).substring(7))
 
-  // 1. Setup Pusher & Realtime Listener
   useEffect(() => {
     if (!roomId) return
 
@@ -34,7 +32,7 @@ export default function GameControls() {
         .eq('room_id', roomId)
       
       const total = count || 1
-      setTotalPlayers(total) // เก็บจำนวนคนทั้งหมดไว้
+      setTotalPlayers(total) 
       setNeededVotes(Math.floor(total / 2) + 1)
     }
     fetchPlayerCount()
@@ -49,7 +47,7 @@ export default function GameControls() {
       const { action, senderId } = data
       
       if (senderId === localClientId.current) {
-         return; // เมินสัญญาณตัวเอง
+         return; 
       }
 
       if (action === 'START') {
@@ -57,7 +55,7 @@ export default function GameControls() {
         setYesVotes(1) 
         setNoVotes(0)
         setHasVoted(false) 
-        setIsInitiator(false) // 🌟 เราไม่ใช่คนเริ่มโหวต
+        setIsInitiator(false) 
       } else if (action === 'YES') {
         setYesVotes(prev => prev + 1)
       } else if (action === 'NO') {
@@ -75,20 +73,16 @@ export default function GameControls() {
     }
   }, [roomId])
 
-  // 2. เช็คผลโหวต
   useEffect(() => {
     if (!voteActive) return
     
-    // เคส 1: โหวต YES ชนะขาดลอย (โหวตออกสำเร็จ)
     if (yesVotes >= neededVotes) {
-      // 🌟 สร้างฟังก์ชัน async เพื่อรอให้เซฟเสร็จก่อน ค่อยเด้งออก
       const saveGameAndExit = async () => {
         try {
           const { data: { user } } = await supabase.auth.getUser();
           const { data: room } = await supabase.from('rooms').select('host_id').eq('id', roomId).single();
           
           if (user && room && user.id === room.host_id) {
-             // 🌟 ลองอัปเดตแค่ status ดูก่อน (ใช้ตัวเล็ก 'saved' ปลอดภัยสุด)
              const { error } = await supabase.from('rooms').update({ 
                 status: 'saved' 
              }).eq('id', roomId);
@@ -96,22 +90,21 @@ export default function GameControls() {
              if (error) {
                 console.error("❌ DB Save Error:", error);
                 alert(`Save Failed! ฐานข้อมูลฟ้องว่า: ${error.message}`);
-                return; // หยุดทำงาน อย่าเพิ่งเด้งเปลี่ยนหน้า
+                return; 
              }
           }
 
           alert("✅ Game Saved successfully! Redirecting to main menu...");
           setVoteActive(false);
-          router.push('/lobby'); // ไปหน้าล็อบบี้หลัก
+          router.push('/lobby'); 
 
         } catch (err: any) {
           console.error("Save catch error:", err);
         }
       };
 
-      saveGameAndExit(); // เรียกใช้งาน
+      saveGameAndExit(); 
     }
-    // เคส 2: โหวต NO ชนะขาดลอย OR โหวตครบทุกคนแล้วแต่ YES ไม่ชนะ
     else if (noVotes >= neededVotes || (yesVotes + noVotes === totalPlayers)) {
       setTimeout(() => {
         alert("❌ Vote failed! The adventure continues.")
@@ -120,7 +113,6 @@ export default function GameControls() {
     }
   }, [yesVotes, noVotes, neededVotes, totalPlayers, voteActive, router, roomId])
 
-  // --- Actions ---
   const broadcastVote = async (action: string) => {
     try {
       await fetch('/api/pusher/vote', {
@@ -134,7 +126,7 @@ export default function GameControls() {
   }
 
   const handleStartVote = () => {
-    setIsInitiator(true) // 🌟 เราคือคนเริ่มโหวต!
+    setIsInitiator(true) 
     setVoteActive(true)
     setYesVotes(1)
     setNoVotes(0)
@@ -161,7 +153,10 @@ export default function GameControls() {
 
   return (
     <>
-      <div className="flex gap-2 pointer-events-auto">
+      {/* ========================================================= */}
+      {/* 🌟 เพิ่ม id="tutorial-game-controls" ที่กล่องนี้ */}
+      {/* ========================================================= */}
+      <div id="tutorial-game-controls" className="flex gap-2 pointer-events-auto bg-black/30 p-2 rounded-xl border border-transparent transition-all">
         <button 
           onClick={togglePause}
           className={`px-4 py-2 rounded-lg font-bold shadow-lg transition-all border text-sm flex items-center gap-2 ${
@@ -197,7 +192,6 @@ export default function GameControls() {
           
           <div className="flex justify-between items-center mb-4">
              <h3 className="text-red-500 font-bold uppercase text-xs">Vote to Exit</h3>
-             {/* 🌟 เช็คก่อนว่าใช่คนเปิดโหวตไหม ถ้าใช่ค่อยให้เห็นปุ่ม Cancel */}
              {isInitiator && (
                 <button onClick={handleCancelVote} className="text-gray-500 hover:text-white text-xs">✖</button>
              )}

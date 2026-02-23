@@ -6,7 +6,6 @@ export default function Environment() {
   const [isShaking, setIsShaking] = useState(false);
   const [isDark, setIsDark] = useState(false);
 
-  // เอฟเฟกต์สั่นจอ
   useEffect(() => {
     if (isShaking) document.body.classList.add('fx-shake-screen');
     else document.body.classList.remove('fx-shake-screen');
@@ -18,8 +17,6 @@ export default function Environment() {
     setTimeout(() => setIsShaking(false), 800); 
   };
 
-  // 🌟 [ใหม่] หูดักฟังคำสั่งจาก AI! 
-  // ถ้า ChatInterface ตะโกนบอกว่ามีเหตุการณ์ มันจะเรียกใช้เอฟเฟกต์ทันที
   useEffect(() => {
     const handleAIEffects = (e: any) => {
       const action = e.detail?.action;
@@ -28,7 +25,6 @@ export default function Environment() {
       if (action === 'dark_off') setIsDark(false);
     };
     
-    // ตั้งรับฟัง Event ชื่อ 'ai-fx'
     window.addEventListener('ai-fx', handleAIEffects);
     return () => window.removeEventListener('ai-fx', handleAIEffects);
   }, []);
@@ -46,7 +42,6 @@ export default function Environment() {
         }
       `}} />
 
-      {/* 🌙 เอฟเฟกต์ขอบจอมืด */}
       <div 
         className={`fixed inset-0 z-[8000] pointer-events-none transition-all duration-1000 ease-in-out ${isDark ? 'opacity-100' : 'opacity-0'}`}
         style={{
@@ -55,7 +50,6 @@ export default function Environment() {
         }}
       />
 
-      {/* 🛠️ ปุ่ม TEST (ยังอยู่เหมือนเดิม) */}
       <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[9999] flex gap-3 pointer-events-auto">
          <button onClick={triggerShake} className="bg-[#c2410c] hover:bg-[#ea580c] text-white px-4 py-2 rounded-lg text-sm font-bold shadow-[0_4px_0_rgb(154,52,18)] active:shadow-[0_0px_0_rgb(154,52,18)] active:translate-y-1 flex items-center gap-2 transition-all border-2 border-[#7c2d12]">
             <Zap size={16} /> SHAKE
