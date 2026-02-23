@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useGameStore, DiceType } from '@/store/useGameStore'
 import { useParticipants } from '@livekit/components-react' 
-import { Zap, Moon, Music, Volume2, ShieldAlert, Heart, Droplet, Dices, ChevronUp, ChevronDown, VolumeX, Upload, Map, CircleUserRound } from 'lucide-react'
+import { Zap, Moon, Music, Volume2, ShieldAlert, Heart, Droplet, Dices, ChevronUp, ChevronDown, VolumeX, Upload, Map, CircleUserRound, Trash2 } from 'lucide-react'
 import { Cinzel } from 'next/font/google'
 import { supabase } from '@/lib/supabase'
 
@@ -230,6 +230,14 @@ export default function GMControlPanel({ roomId, currentUserId }: { roomId: stri
                       </div>
                     ))}
                   </div>
+                  {/* 🌟 เพิ่มปุ่มเคลียร์กระดานตรงนี้ครับ */}
+                  <button onClick={() => {
+                      useGameStore.getState().clearTokens();
+                      fetch('/api/pusher/game-event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId, senderId: currentUserId, actionType: 'CLEAR_TOKENS' }) });
+                  }} className="mt-2 w-full bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800 py-2.5 rounded text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2 transition-colors">
+                      <Trash2 size={14} /> Clear All Tokens
+                  </button>
+
                 </div>
              )}
 

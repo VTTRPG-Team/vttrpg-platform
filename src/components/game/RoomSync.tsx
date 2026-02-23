@@ -42,6 +42,17 @@ export default function RoomSync({ roomId, currentUserId }: { roomId: string, cu
         if (data.actionType === 'SPAWN_TOKEN' && !isMe) {
             useGameStore.getState().addToken(data.tokenData);
         }
+
+        // 🌟 ย้ายพิกัด Token
+        if (data.actionType === 'MOVE_TOKEN' && !isMe) {
+            const { id, x, z } = data.tokenData;
+            useGameStore.getState().updateTokenPosition(id, x, z);
+        }
+
+        // 🌟 ลบ Token ทั้งหมด
+        if (data.actionType === 'CLEAR_TOKENS' && !isMe) {
+            useGameStore.getState().clearTokens();
+        }
     });
 
     return () => { pusher.unsubscribe(`room-${roomId}`); pusher.disconnect(); };
