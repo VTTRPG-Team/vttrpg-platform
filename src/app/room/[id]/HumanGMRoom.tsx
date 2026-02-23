@@ -82,7 +82,7 @@ export default function HumanGMRoom({ roomId, currentUserId, myUsername, isHost 
           {/* 🌟 ถ้าเป็น Host ให้แสดงเครื่องมือ GM (ถ้าไม่ใช่ ก็แค่หน้าจอโล่งๆ ไม่มีช่องแชท) */}
           {isHost && (
               <div className="absolute bottom-4 left-4 z-50 pointer-events-auto">
-                  <GMControlPanel roomId={roomId} />
+                  <GMControlPanel roomId={roomId} currentUserId={currentUserId} />
               </div>
           )}
 

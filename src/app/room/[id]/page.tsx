@@ -28,6 +28,8 @@ import TutorialOverlay from '@/components/game/ui/TutorialOverlay'
 // 🌟 นำเข้าของคุณโอม (กระดานแยกสำหรับ Human GM)
 import HumanGMRoom from './HumanGMRoom'
 
+import RoomSync from '@/components/game/RoomSync'
+
 function PhysicsFloor() {
   const [ref] = usePlane(() => ({ rotation: [-Math.PI / 2, 0, 0], position: [0, 0, 0], type: 'Static' }))
   return <mesh ref={ref as any} visible={false}><planeGeometry args={[20, 20]} /></mesh>
@@ -149,6 +151,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
       data-lk-theme="default"
       connect={true}
     >
+        <RoomSync roomId={id} currentUserId={currentUserId || ''} />
         {/* 🌟 สวิตช์สลับหน้า! ถ้าเป็น Human GM ให้ไปหน้า HumanGMRoom ถ้าเป็น AI ให้ไปหน้า AIGMRoom */}
         {roomData.gm_type === 'human' ? (
             <HumanGMRoom 
