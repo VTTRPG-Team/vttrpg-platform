@@ -75,9 +75,7 @@ export default function HumanGMRoom({ roomId, currentUserId, myUsername, isHost 
              </div>
           </div>
 
-          <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 pointer-events-auto z-50">
-              <DiceControls />
-          </div>
+          <DiceControls />
 
           {/* 🌟 ถ้าเป็น Host ให้แสดงเครื่องมือ GM (ถ้าไม่ใช่ ก็แค่หน้าจอโล่งๆ ไม่มีช่องแชท) */}
           {isHost && (
