@@ -1,6 +1,7 @@
 'use client'
 import { useGameStore, DiceType, DiceRollData } from '@/store/useGameStore'
 import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
 
 // --- Component ลูกเต๋า 1 ลูก (แยกออกมาเพื่อให้จัดการ Animation ตัวเองได้อิสระ) ---
 function SingleDice({ roll }: { roll: DiceRollData }) {
@@ -67,6 +68,18 @@ export default function DiceResultOverlay() {
   const { diceState, closeDiceArena } = useGameStore()
   const { activeRolls, isActive, requiredDice, targetPlayers } = diceState
   const [timeoutWarning, setTimeoutWarning] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string>('');
+
+  // ดึง currentUserId จาก Supabase
+  useEffect(() => {
+    const fetchUser = async () => {
+      const { data } = await supabase.auth.getUser();
+      if (data?.user) {
+        setCurrentUserId(data.user.id);
+      }
+    }
+    fetchUser();
+  }, []);
 
   // ปิดหน้าต่างอัตโนมัติเมื่อทุกคนทอยเสร็จแล้ว
   useEffect(() => {
@@ -96,6 +109,25 @@ export default function DiceResultOverlay() {
       if (hasAllRequiredPlayers) {
         setTimeoutWarning(false);
         const timer = setTimeout(() => {
+          // 🌟 ส่งผลลัพธ์ไป AI เมื่อเสร็จแล้ว
+          const roomId = window.location.pathname.split('/').pop();
+          const diceResults = activeRolls.map(r => `${r.username}: ${r.result}`).join(', ');
+          
+          fetch('/api/pusher/party-chat', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ 
+              roomId: roomId, 
+              senderId: currentUserId, 
+              actionType: 'DICE_COMPLETE',
+              message: {
+                text: `🎲 Dice rolls completed: ${diceResults}`,
+                type: 'SYSTEM',
+                channel: 'AI'
+              }
+            }) 
+          }).catch(e => console.error("Failed to send dice complete", e));
+          
           closeDiceArena();
           setTimeoutWarning(false);
         }, 3000);
@@ -104,9 +136,9 @@ export default function DiceResultOverlay() {
     } else {
       setTimeoutWarning(false);
     }
-  }, [isActive, activeRolls, closeDiceArena, targetPlayers]);
+  }, [isActive, activeRolls, closeDiceArena, targetPlayers, currentUserId]);
 
-  // 🌟 ตั้ง Safety Timeout: ถ้ารอมากกว่า 10 วินาที ให้ปิดเอาเอง
+  // 🌟 ตั้ง Safety Timeout: ถ้ารอมากกว่า 10 วินาที ให้ปิดเอาเอง และส่งข้อความไป AI
   useEffect(() => {
     if (!isActive) return;
     
@@ -114,14 +146,39 @@ export default function DiceResultOverlay() {
       if (isActive) {
         console.warn("Dice rolling timeout - closing arena forcefully");
         setTimeoutWarning(true);
+        
+        // 🌟 ส่งข้อความไป AI ว่าทอยไม่ทัน
+        const roomId = window.location.pathname.split('/').pop();
+        const notRolledPlayers = targetPlayers?.filter(targetPlayer => 
+          !activeRolls.some(roll => roll.username.toLowerCase() === targetPlayer.toLowerCase())
+        ) || [];
+        
+        if (notRolledPlayers.length > 0) {
+          const notRolledText = notRolledPlayers.join(', ');
+          fetch('/api/pusher/party-chat', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ 
+              roomId: roomId, 
+              senderId: currentUserId, 
+              actionType: 'DICE_TIMEOUT',
+              message: {
+                text: `⏱️ Timeout: ${notRolledText} didn't roll in time. AI will roll for them.`,
+                type: 'SYSTEM',
+                channel: 'AI'
+              }
+            }) 
+          }).catch(e => console.error("Failed to send timeout message", e));
+        }
+        
         setTimeout(() => {
           closeDiceArena();
-        }, 2000); // แสดง warning 2 วินาที แล้วค่อยปิด
+        }, 2000);
       }
     }, 10000); // 10 วินาที
     
     return () => clearTimeout(safetyTimer);
-  }, [isActive, closeDiceArena]);
+  }, [isActive, closeDiceArena, targetPlayers, activeRolls, currentUserId]);
 
   if (!isActive) return null;
 

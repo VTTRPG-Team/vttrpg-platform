@@ -210,6 +210,9 @@ export default function ChatInterface() {
     if (!actionInput.trim() || isAiBusy || hasSubmittedAction) return;
     sendAiAction(actionInput);
     setActionInput('');
+    // 🌟 เพิ่มการหยุด Timer และล้าง QuickChoices เหมือนกับการกดช้อย
+    stopTensionTimer();
+    clearQuickChoices();
   }
 
   const handleSendParty = (e: React.FormEvent) => {
