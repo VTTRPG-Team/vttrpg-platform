@@ -18,64 +18,32 @@ import GameControls from '@/components/game/ui/GameControls'
 import DiceControls from '@/components/game/ui/DiceControls'
 import DiceResultOverlay from '@/components/game/ui/DiceResultOverlay' 
 import VideoOverlay from '@/components/game/ui/VideoOverlay'
-
 import Environment from '@/components/game/ui/Environment'
 import AudioEngine from '@/components/game/ui/AudioEngine'
-
 import CursorOverlay from '@/components/player-actions/CursorOverlay' 
 import QuickChoices from '@/components/player-actions/QuickChoices' 
 
-// 🌟 แก้ Path ให้ชี้ไปที่โฟลเดอร์ game/ui/ (ถ้าคุณเซฟไว้ตรงนี้)
+// 🌟 นำเข้าของเพื่อน (Tutorial สำหรับตอนเล่นกับ AI)
 import TutorialOverlay from '@/components/game/ui/TutorialOverlay' 
+// 🌟 นำเข้าของคุณโอม (กระดานแยกสำหรับ Human GM)
+import HumanGMRoom from './HumanGMRoom'
 
 function PhysicsFloor() {
   const [ref] = usePlane(() => ({ rotation: [-Math.PI / 2, 0, 0], position: [0, 0, 0], type: 'Static' }))
   return <mesh ref={ref as any} visible={false}><planeGeometry args={[20, 20]} /></mesh>
 }
 
-export default function RoomPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params) 
+// ==========================================
+// 🌟 Component หน้ากระดานแบบดั้งเดิม (AI GM)
+// ==========================================
+function AIGMRoom({ id, currentUserId, myUsername }: any) {
   const { viewMode, toggleView } = useGameStore()
-  const [token, setToken] = useState("");
-
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [myUsername, setMyUsername] = useState<string>('Player');
-
-  useEffect(() => {
-    const fetchToken = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      
-      const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single();
-      const username = profile?.username || 'Player';
-
-      setCurrentUserId(user.id);
-      setMyUsername(username);
-
-      const res = await fetch(`/api/livekit?room=${id}&username=${username}&userId=${user.id}`);
-      const data = await res.json();
-      setToken(data.token);
-    };
-    fetchToken();
-  }, [id]);
-
-  if (!token) {
-    return <div className="w-full h-screen bg-black flex items-center justify-center text-white font-mono animate-pulse">Connecting to Realm...</div>;
-  }
-
+  
   return (
-    <LiveKitRoom
-      video={true}
-      audio={true}
-      token={token}
-      serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
-      data-lk-theme="default"
-      connect={true}
-    >
       <main className="relative w-full h-screen overflow-hidden bg-black font-sans select-none">
         <RoomAudioRenderer />
 
-        {/* 🌟 วาง TutorialOverlay ไว้ตรงนี้ */}
+        {/* 🌟 วาง TutorialOverlay ของเพื่อนไว้ที่นี่! (แสดงเฉพาะโหมด AI) */}
         <TutorialOverlay />
 
         {/* === LAYER 0: 3D WORLD === */}
@@ -85,7 +53,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
             <ambientLight intensity={0.5} />
             <pointLight position={[10, 15, 10]} castShadow />
             <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
-
             <Physics gravity={[0, -9.8, 0]}>
               <PhysicsFloor />
               <Dice /> 
@@ -101,7 +68,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
 
         {/* === LAYER 1: UI OVERLAY === */}
         <div className="absolute inset-0 z-50 pointer-events-none flex flex-col justify-between p-4">
-          
           <QuickChoices />
           <CursorOverlay roomId={id} currentUserId={currentUserId} myUsername={myUsername} />
           <DiceResultOverlay />
@@ -113,7 +79,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
              
              <div className="flex items-center gap-3 pointer-events-auto">
                <AudioEngine />
-               
                <button onClick={toggleView} className="bg-neutral-800/80 hover:bg-neutral-700 border border-white/20 text-white px-4 py-2 rounded-lg font-bold text-sm transition-all shadow-lg min-w-[140px]">
                  {viewMode === 'PERSPECTIVE' ? '👁 View: Table' : '♟ View: Board'}
                </button>
@@ -128,13 +93,77 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
           <div className="absolute bottom-4 left-4 z-50 pointer-events-auto max-h-[50vh]">
               <ChatInterface />
           </div>
-
         </div>
 
-        {/* 🌟 วาง Environment ไว้หลังสุดเพื่อคลุมจอ */}
         <Environment />
-
       </main>
+  )
+}
+
+// ==========================================
+// 🌟 Component หลัก (ทำหน้าที่ตรวจเช็คสิทธิ์ และเลือกว่าจะส่งไปหน้าไหน)
+// ==========================================
+export default function RoomPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params) 
+  const [token, setToken] = useState("");
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [myUsername, setMyUsername] = useState<string>('Player');
+  
+  // 🌟 เก็บข้อมูลห้อง ว่าเป็น GM แบบไหน
+  const [roomData, setRoomData] = useState<any>(null);
+
+  useEffect(() => {
+    const initRoom = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      
+      const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single();
+      const username = profile?.username || 'Player';
+
+      setCurrentUserId(user.id);
+      setMyUsername(username);
+
+      // ดึงข้อมูลห้อง
+      const { data: roomInfo } = await supabase.from('rooms').select('*').eq('id', id).single();
+      if (roomInfo) setRoomData(roomInfo);
+
+      const res = await fetch(`/api/livekit?room=${id}&username=${username}&userId=${user.id}`);
+      const data = await res.json();
+      setToken(data.token);
+    };
+    initRoom();
+  }, [id]);
+
+  if (!token || !roomData) {
+    return <div className="w-full h-screen bg-black flex items-center justify-center text-white font-mono animate-pulse">Connecting to Realm...</div>;
+  }
+
+  const isHost = currentUserId === roomData.host_id;
+
+  return (
+    <LiveKitRoom
+      video={true}
+      audio={true}
+      token={token}
+      serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
+      data-lk-theme="default"
+      connect={true}
+    >
+        {/* 🌟 สวิตช์สลับหน้า! ถ้าเป็น Human GM ให้ไปหน้า HumanGMRoom ถ้าเป็น AI ให้ไปหน้า AIGMRoom */}
+        {roomData.gm_type === 'human' ? (
+            <HumanGMRoom 
+                roomId={id} 
+                currentUserId={currentUserId} 
+                myUsername={myUsername} 
+                isHost={isHost} 
+            />
+        ) : (
+            <AIGMRoom 
+                id={id} 
+                currentUserId={currentUserId} 
+                myUsername={myUsername} 
+            />
+        )}
     </LiveKitRoom>
   )
 }

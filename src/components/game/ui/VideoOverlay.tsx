@@ -7,6 +7,9 @@ import { Heart, Droplet, Skull, Flame, ShieldAlert, Mic, MicOff, Video as VideoI
 import { Cinzel } from 'next/font/google'
 import { supabase } from '@/lib/supabase'
 
+// 🌟 Import ตัวเลขลอยเข้ามา
+import DamageNumbers from './DamageNumbers' 
+
 const cinzel = Cinzel({ subsets: ['latin'], weight: ['700'] });
 
 const renderStatusIcon = (status: string) => {
@@ -36,6 +39,9 @@ function PlayerVideoCard({ p }: { p: Participant }) {
   
   const hpPercent = (stats.hp / stats.maxHp) * 100;
   const manaPercent = (stats.mana / stats.maxMana) * 100;
+  
+  // 🌟 เช็คสถานะความตาย (HP เหลือ 0)
+  const isDead = stats.hp <= 0;
 
   useEffect(() => {
     const fetchAvatar = async () => {
@@ -48,8 +54,14 @@ function PlayerVideoCard({ p }: { p: Participant }) {
 
   return (
     <div className={`relative bg-[#1a0f0a]/90 backdrop-blur-md border-2 rounded-lg shadow-[0_0_15px_rgba(0,0,0,0.8)] overflow-hidden transition-all duration-300 group
-        ${isSpeaking && !isMicMuted ? 'border-green-500 shadow-[0_0_20px_rgba(34,197,94,0.6)] scale-105 z-10' : 'border-[#5d4037] hover:border-[#F4E4BC]/50'}`}>
+        ${isSpeaking && !isMicMuted && !isDead ? 'border-green-500 shadow-[0_0_20px_rgba(34,197,94,0.6)] scale-105 z-10' : 'border-[#5d4037] hover:border-[#F4E4BC]/50'}
+        ${isDead ? 'grayscale opacity-75' : ''}`}> 
+        {/* 👆 ถ้าตาย จะทำให้ทั้งการ์ดเป็นสีเทาและจางลงนิดหน่อย */}
       
+      {/* 🌟 ยัด DamageNumbers ล่องหนเอาไว้ตรงนี้ให้ทับหน้าคนพอดี! */}
+      <DamageNumbers username={username} />
+
+      {/* 📸 ส่วนที่ 1: กล้อง Video หรือ Avatar */}
       <div className="relative w-full h-28 bg-black border-b border-[#3e2723]">
         {isVideoOn ? (
           <VideoTrack trackRef={videoTrack} className="w-full h-full object-cover transform scale-x-[-1]" />
@@ -63,6 +75,15 @@ function PlayerVideoCard({ p }: { p: Participant }) {
           </div>
         )}
         
+        {/* 💀 โอเวอร์เลย์ตอนตาย แปะทับหน้าไปเลย */}
+        {isDead && (
+          <div className="absolute inset-0 bg-red-950/60 flex flex-col items-center justify-center z-30 backdrop-blur-[2px]">
+            <Skull size={32} className="text-red-500 drop-shadow-[0_0_8px_rgba(255,0,0,0.8)]" />
+            <span className={`${cinzel.className} text-red-500 font-black tracking-widest text-lg drop-shadow-[0_0_8px_rgba(0,0,0,1)]`}>DEAD</span>
+          </div>
+        )}
+
+        {/* ไอคอนสถานะอุปกรณ์ */}
         <div className="absolute top-2 right-2 flex gap-1 z-20">
           {isDeafened && (
             <div className="bg-red-900/80 p-1 rounded text-white backdrop-blur-sm" title="Deafened">
@@ -73,7 +94,7 @@ function PlayerVideoCard({ p }: { p: Participant }) {
             <div className="bg-red-900/80 p-1 rounded text-white backdrop-blur-sm" title="Muted">
               <MicOff size={12} />
             </div>
-          ) : isSpeaking ? (
+          ) : isSpeaking && !isDead ? (
             <div className="bg-green-600/90 p-1 rounded text-white backdrop-blur-sm animate-pulse">
               <Mic size={12} />
             </div>
@@ -87,7 +108,8 @@ function PlayerVideoCard({ p }: { p: Participant }) {
         </div>
       </div>
 
-      <div className="p-2 space-y-2">
+      {/* 📊 ส่วนที่ 2: RPG Stats */}
+      <div className="p-2 space-y-2 relative z-20">
         <div className="relative w-full h-3 bg-red-950 rounded-full border border-red-900 overflow-hidden shadow-inner">
           <div 
             className="absolute top-0 left-0 h-full bg-gradient-to-r from-red-700 to-red-500 transition-all duration-500 ease-out"
@@ -121,7 +143,8 @@ function PlayerVideoCard({ p }: { p: Participant }) {
         )}
       </div>
       
-      {hpPercent <= 20 && (
+      {/* เอฟเฟกต์จอแดงเวลาเลือดจะหมด (ซ่อนถ้าตายแล้ว) */}
+      {!isDead && hpPercent <= 20 && hpPercent > 0 && (
         <div className="absolute inset-0 border-2 border-red-600 animate-pulse pointer-events-none rounded-lg z-30" />
       )}
     </div>
@@ -148,38 +171,24 @@ export default function VideoOverlay() {
       try {
         await localParticipant.setAttributes({ deafened: (!isSpeakerOn).toString() });
       } catch (error) {
-        console.warn("⚠️ ส่งป้ายประกาศหูตึงไม่ทัน (Timeout) แต่แอปไม่พังแล้ว:", error);
+        console.warn("⚠️ ส่งป้ายประกาศหูตึงไม่ทัน:", error);
       }
     };
     updateDeafenStatus();
   }, [isSpeakerOn, localParticipant]);
 
   return (
-    <div id="tutorial-video-overlay" className="flex flex-col gap-3 w-48 pointer-events-auto bg-black/20 p-2 rounded-xl border border-transparent transition-all">
-      {/* 🌟 ย้ายคอมเมนต์เข้ามาด้านใน และใส่ id ตรง div บนสุดแล้ว */}
-      
+    <div className="flex flex-col gap-3 w-48 pointer-events-auto">
       {isSpeakerOn && <RoomAudioRenderer />}
 
       <div className="flex justify-between gap-1 bg-[#1a0f0a]/95 p-2 rounded-lg border-2 border-[#3e2723] backdrop-blur-md shadow-xl">
-          <button 
-            onClick={() => setIsMicOn(!isMicOn)} 
-            className={`flex-1 flex justify-center p-2 rounded-md transition-all ${isMicOn ? 'bg-[#3e2723] text-[#F4E4BC] hover:bg-[#5d4037]' : 'bg-red-900/80 text-red-200 shadow-[0_0_8px_red]'}`} 
-            title={isMicOn ? 'Mute Mic' : 'Unmute Mic'}
-          >
+          <button onClick={() => setIsMicOn(!isMicOn)} className={`flex-1 flex justify-center p-2 rounded-md transition-all ${isMicOn ? 'bg-[#3e2723] text-[#F4E4BC] hover:bg-[#5d4037]' : 'bg-red-900/80 text-red-200 shadow-[0_0_8px_red]'}`} title={isMicOn ? 'Mute Mic' : 'Unmute Mic'}>
             {isMicOn ? <Mic size={16}/> : <MicOff size={16}/>}
           </button>
-          <button 
-            onClick={() => setIsCamOn(!isCamOn)} 
-            className={`flex-1 flex justify-center p-2 rounded-md transition-all ${isCamOn ? 'bg-[#3e2723] text-[#F4E4BC] hover:bg-[#5d4037]' : 'bg-red-900/80 text-red-200 shadow-[0_0_8px_red]'}`} 
-            title={isCamOn ? 'Turn Off Camera' : 'Turn On Camera'}
-          >
+          <button onClick={() => setIsCamOn(!isCamOn)} className={`flex-1 flex justify-center p-2 rounded-md transition-all ${isCamOn ? 'bg-[#3e2723] text-[#F4E4BC] hover:bg-[#5d4037]' : 'bg-red-900/80 text-red-200 shadow-[0_0_8px_red]'}`} title={isCamOn ? 'Turn Off Camera' : 'Turn On Camera'}>
             {isCamOn ? <VideoIcon size={16}/> : <VideoOff size={16}/>}
           </button>
-          <button 
-            onClick={() => setIsSpeakerOn(!isSpeakerOn)} 
-            className={`flex-1 flex justify-center p-2 rounded-md transition-all ${isSpeakerOn ? 'bg-[#3e2723] text-[#F4E4BC] hover:bg-[#5d4037]' : 'bg-red-900/80 text-red-200 shadow-[0_0_8px_red]'}`} 
-            title={isSpeakerOn ? 'Deafen (Mute Audio)' : 'Undeafen'}
-          >
+          <button onClick={() => setIsSpeakerOn(!isSpeakerOn)} className={`flex-1 flex justify-center p-2 rounded-md transition-all ${isSpeakerOn ? 'bg-[#3e2723] text-[#F4E4BC] hover:bg-[#5d4037]' : 'bg-red-900/80 text-red-200 shadow-[0_0_8px_red]'}`} title={isSpeakerOn ? 'Deafen (Mute Audio)' : 'Undeafen'}>
             {isSpeakerOn ? <Headphones size={16}/> : <HeadphoneOff size={16}/>}
           </button>
       </div>

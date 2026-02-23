@@ -23,6 +23,14 @@ export interface DiceRollData {
   isRolling: boolean;
 }
 
+// 🌟 เพิ่ม Interface สำหรับตัวเลขลอย
+export interface FloatingTextData {
+  id: string;
+  username: string;
+  amount: number;
+  type: 'damage' | 'heal';
+}
+
 interface GameState {
   quickChoices: string[];
   setQuickChoices: (choices: string[]) => void;
@@ -61,10 +69,7 @@ interface GameState {
   };
   
   triggerDiceRollEvent: (diceType: DiceType, targetPlayers?: string[]) => void;
-  
-  // 🌟 เพิ่ม parameter: rollId และ isLocal
   addDiceRoll: (rollId: string, userId: string, username: string, diceType: DiceType, result: number, isLocal?: boolean) => void;
-  
   finishDiceRoll: (rollId: string) => void;
   debugUnlockDice: () => void;
   clearPendingSubmit: () => void; 
@@ -74,7 +79,11 @@ interface GameState {
   updatePlayerStat: (username: string, statType: 'hp' | 'mana', amount: number) => void;
   setPlayerStatus: (username: string, status: string, action: 'add' | 'remove') => void;
 
-  // 🌟 State ของคุณที่แทรกเพิ่ม
+  // 🌟 เพิ่มระบบ Floating Text และอัปเดตเลือดในฟังก์ชันเดียว
+  floatingTexts: FloatingTextData[];
+  triggerStatChange: (username: string, amount: number, type: 'damage' | 'heal') => void;
+  removeFloatingText: (id: string) => void;
+
   currentBg: string | null;
   setCurrentBg: (bg: string | null) => void;
   
@@ -101,7 +110,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     messages: [...state.messages, { id: Math.random().toString(36).substr(2, 9), sender, text, type, channel, timestamp: new Date() }]
   })),
 
-  // หมายเหตุ: timeLeft ตัวนี้เป็นคนละตัวกับ tensionTimeLeft นะครับ (น่าจะใช้กับการจับเวลาเทิร์นหลัก) ผมคงไว้ให้ตามเดิม
   aiStatus: 'PLAYER_TURN', turnCount: 0, timeLeft: 60, waitingFor: [], playerActions: [], 
 
   setAiStatus: (status) => set({ aiStatus: status }),
@@ -139,10 +147,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ diceState: { isActive: true, canRoll: true, requiredDice: diceType, targetPlayers, activeRolls: [], pendingSubmit: null } });
   },
 
-  // 🌟 จุดแก้บัคสำคัญ
   addDiceRoll: (rollId, userId, username, diceType, result, isLocal = false) => {
     set((state) => {
-      // 🌟 กันเต๋าเบิ้ล 2 ลูก: ถ้ามี rollId นี้อยู่แล้ว ให้ข้ามไปเลยไม่ต้องแอดเพิ่ม
       if (state.diceState.activeRolls.some(r => r.id === rollId)) return state;
 
       const newRolls = [...state.diceState.activeRolls, { id: rollId, userId, username, diceType, result, isRolling: true }];
@@ -150,7 +156,6 @@ export const useGameStore = create<GameState>((set, get) => ({
         diceState: { 
           ...state.diceState, 
           isActive: true, 
-          // 🌟 กันล็อคปุ่มคนอื่น: ล็อคปุ่มเฉพาะเวลาที่เรากดทอยเอง (isLocal) ถ้าเพื่อนกดมาไม่ต้องล็อค
           canRoll: isLocal ? false : state.diceState.canRoll, 
           activeRolls: newRolls 
         } 
@@ -208,13 +213,31 @@ export const useGameStore = create<GameState>((set, get) => ({
     };
   }),
 
-  // 🌟 Implementation ของคุณ
+  // 🌟 ฟังก์ชันจัดการ Damage / Heal
+  floatingTexts: [],
+  triggerStatChange: (username, amount, type) => set((state) => {
+    const id = Math.random().toString(36).substring(2, 9);
+    
+    // อัปเดต HP ไปด้วยเลย
+    const currentStats = state.playerStats[username] || { hp: 100, maxHp: 100, mana: 50, maxMana: 50, statuses: [] };
+    let newHp = currentStats.hp + amount;
+    if (newHp > currentStats.maxHp) newHp = currentStats.maxHp;
+    if (newHp < 0) newHp = 0;
+
+    return {
+      playerStats: { ...state.playerStats, [username]: { ...currentStats, hp: newHp } },
+      floatingTexts: [...state.floatingTexts, { id, username, amount: Math.abs(amount), type }]
+    };
+  }),
+  removeFloatingText: (id) => set((state) => ({
+    floatingTexts: state.floatingTexts.filter(ft => ft.id !== id)
+  })),
+
   currentBg: null,
   setCurrentBg: (bg) => set({ currentBg: bg }),
 
-  // 🌟 แก้ไขตรงนี้ครับ เปลี่ยนจาก timeLeft เป็น tensionTimeLeft ให้หมด
   isTimerActive: false,
-  tensionTimeLeft: 0, // ตั้งค่าเริ่มต้นให้เป็น 0
+  tensionTimeLeft: 0, 
   startTensionTimer: (seconds = 10) => set({ isTimerActive: true, tensionTimeLeft: seconds }),
   stopTensionTimer: () => set({ isTimerActive: false, tensionTimeLeft: 0 }),
   tickTensionTimer: () => set((state) => ({ tensionTimeLeft: Math.max(0, state.tensionTimeLeft - 1) })),

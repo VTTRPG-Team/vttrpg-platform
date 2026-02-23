@@ -49,7 +49,6 @@ export const ai_gm = () => {
     initData();
   }, [roomId]);
 
-  // 🌟 ลบ rollRequest ออกจาก processRef ตามกิ่ง dev
   const processRef = useRef((text: string, msgId: string) => {});
   useEffect(() => {
     processRef.current = (text: string, msgId: string) => {
@@ -82,38 +81,29 @@ export const ai_gm = () => {
     const channel = pusher.subscribe(`room-${roomId}`);
     
     channel.bind('party-chat-event', (data: any) => {
-      // 🌟 นำ diceData จากกิ่ง MainGame2.0 มารวมด้วย
-      const { message, senderId, actionType, diceData } = data;
+      // 🌟 รับ statData มาด้วย
+      const { message, senderId, actionType, diceData, statData } = data;
       if (senderId === localClientId) return; 
 
-      // 1. AI เริ่มคิด (ล็อคจอเพื่อนๆ)
       if (actionType === 'AI_THINKING' || message?.id === 'sys-thinking') {
          setLoading(true);
       }
-      // 2. ถ้ามี Error จากระบบ (รันเอฟเฟกต์แก้จอค้างตามกิ่ง dev)
       else if (actionType === 'AI_ERROR' || message?.id?.startsWith('err-')) {
          if (message?.text) processRef.current(message.text, message.id); 
       }
-      // 3. THE FIX: ดักจับเวลา AI ตอบกลับมาให้ชัวร์ 100% (กิ่ง dev)
       else if (actionType === 'AI_RESPONSE' || (message?.type === 'AI' && message?.sender === 'AI GM')) {
         processRef.current(message.text, message.id); 
       } 
-      // 🌟 รับคำสั่งปลดล็อค Debug จากเพื่อน (กิ่ง MainGame2.0)
       else if (actionType === 'DEBUG_UNLOCK') {
         useGameStore.getState().debugUnlockDice();
       }
-      // 🌟 รับเต๋าจากเพื่อน (อัปเดตใหม่ ให้มี rollId และส่ง isLocal เป็น false) (กิ่ง MainGame2.0)
       else if (actionType === 'DICE_ROLL' && diceData) {
-        useGameStore.getState().addDiceRoll(
-           diceData.rollId, 
-           diceData.userId, 
-           diceData.username, 
-           diceData.diceType, 
-           diceData.result, 
-           false // <--- จุดสำคัญที่ทำให้ปุ่มทอยเราไม่โดนล็อคเวลาเพื่อนทอย
-        );
+        useGameStore.getState().addDiceRoll(diceData.rollId, diceData.userId, diceData.username, diceData.diceType, diceData.result, false);
       }
-      // 4. ข้อความแชทปกติจากผู้เล่นคนอื่นๆ
+      // 🌟 EVENT ใหม่: รับข้อมูลเพื่อนโดนดาเมจ/ฮีล (เพื่อเด้งตัวเลขที่เครื่องเราด้วย)
+      else if (actionType === 'STAT_CHANGE' && statData) {
+        useGameStore.getState().triggerStatChange(statData.username, statData.amount, statData.type);
+      }
       else if (message && message.text) { 
         setMessages(prev => prev.some(m => m.id === message.id) ? prev : [...prev, message]);
         if (message.channel === 'AI' && message.type === 'USER') {
@@ -155,10 +145,8 @@ export const ai_gm = () => {
 
       if (!text) throw new Error("No text from AI");
 
-      // 🌟 เอาการกรอง Roll Request ตรงนี้ออก (ตามกิ่ง dev) ปล่อยให้เป็นหน้าที่ของ tagParser จัดการ
-      // เราจะแค่ทำความสะอาด text สำหรับส่งไปเจนรูปพอ
       import('./ai_asset').then(({ generateBoardImage }) => {
-          const cleanText = text.replace(/\[.*?\]/g, '').replace(/[*_#]/g, ''); // เอาแท็กทั้งหมดใน [] และเครื่องหมาย markdown ออกก่อนส่งไปเจนรูป
+          const cleanText = text.replace(/\[.*?\]/g, '').replace(/[*_#]/g, ''); 
           const imagePrompt = isAutoStart ? `Fantasy RPG Opening Scene: ${cleanText.slice(0, 150)}` : `Fantasy RPG Scene: ${cleanText.slice(0, 150)}`; 
           generateBoardImage(roomId, imagePrompt);
       });
@@ -166,7 +154,6 @@ export const ai_gm = () => {
       const msgId = `ai-${Date.now()}`;
       const fullAiMessage: UIMessage = { id: msgId, userId: null, sender: 'AI GM', text: text, type: 'AI', channel: 'AI' };
 
-      // 🌟 เอา rollRequest ออกจาก body ของ fetch
       fetch('/api/pusher/party-chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId, message: fullAiMessage, senderId: localClientId, actionType: 'AI_RESPONSE' }) });
       
       processRef.current(text, msgId);
@@ -177,23 +164,10 @@ export const ai_gm = () => {
       setLoading(false); 
 
       const errorMsgId = `err-${Date.now()}`;
-      
-      const fallbackMsg: UIMessage = { 
-         id: errorMsgId, 
-         userId: null, 
-         sender: 'AI GM', 
-         text: '❌ [System Alert]: The AI connection was interrupted or rate-limited. Please try your action again.', 
-         type: 'AI', 
-         channel: 'AI' 
-      };
+      const fallbackMsg: UIMessage = { id: errorMsgId, userId: null, sender: 'AI GM', text: '❌ [System Alert]: The AI connection was interrupted or rate-limited. Please try your action again.', type: 'AI', channel: 'AI' };
 
-      fetch('/api/pusher/party-chat', { 
-         method: 'POST', 
-         headers: { 'Content-Type': 'application/json' }, 
-         body: JSON.stringify({ roomId, message: fallbackMsg, senderId: localClientId, actionType: 'AI_RESPONSE' }) 
-      }).catch(() => {});
+      fetch('/api/pusher/party-chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId, message: fallbackMsg, senderId: localClientId, actionType: 'AI_RESPONSE' }) }).catch(() => {});
 
-      // 🌟 แก้ให้เหลือแค่ 2 พารามิเตอร์ตามกิ่ง dev
       processRef.current(fallbackMsg.text, errorMsgId);
     }
   };
