@@ -166,12 +166,30 @@ export default function CreateLobbyPage() {
                 <Scroll size={16} /> Quest Briefing
             </label>
             <textarea 
-                rows={4} 
+                rows={3} 
+                maxLength={150}
                 value={desc} 
                 onChange={e => setDesc(e.target.value)} 
                 className={inputStyle} 
                 placeholder="Describe the adventure context..." 
             />
+
+            <div className="flex justify-between items-start mt-2 px-1">
+                <p className="text-[16px] text-[#a1887f] flex items-center gap-1.5">
+                  {gmType === 'ai' && (
+                    <>
+                      <Sparkles size={12} className="text-yellow-500" />
+                      This knowledge shapes the AI's opening narrative.
+                    </>
+                  )}
+                </p>
+                
+                <span className={`text-xs font-mono transition-colors ${
+                    desc.length >= 150 ? 'text-red-500 font-bold animate-pulse' : 'text-[#5d4037]'
+                }`}>
+                    {desc.length}/150
+                </span>
+            </div>
           </div>
 
           {/* 🌟 THE NEW FEATURE: เลือกประเภท GM */}
