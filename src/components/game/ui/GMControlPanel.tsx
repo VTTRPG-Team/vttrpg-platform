@@ -231,10 +231,42 @@ export default function GMControlPanel({ roomId, currentUserId }: { roomId: stri
                     ))}
                   </div>
                   {/* 🌟 เพิ่มปุ่มเคลียร์กระดานตรงนี้ครับ */}
-                  <button onClick={() => {
-                      useGameStore.getState().clearTokens();
-                      fetch('/api/pusher/game-event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId, senderId: currentUserId, actionType: 'CLEAR_TOKENS' }) });
-                  }} className="mt-2 w-full bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800 py-2.5 rounded text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2 transition-colors">
+                  {/* 🌟 แก้ไขปุ่ม Clear All Tokens ให้ลบใน Database ด้วย */}
+                  <button 
+                    onClick={async () => {
+                        // 1. ยืนยันการลบ (เผื่อกดพลาด)
+                        if (!confirm("Are you sure you want to remove ALL tokens?")) return;
+
+                        // 2. ลบใน Database จริงๆ
+                        const { error } = await supabase
+                            .from('room_tokens')
+                            .delete()
+                            .eq('room_id', roomId);
+
+                        if (error) {
+                            console.error("Error clearing tokens:", error);
+                            alert("Failed to clear tokens from database");
+                            return;
+                        }
+
+                        // 3. ลบใน Store ของเครื่อง GM เอง
+                        useGameStore.getState().clearTokens();
+
+                        // 4. ส่ง Pusher บอกคนอื่นในห้องให้ลบตาม
+                        await fetch('/api/pusher/game-event', { 
+                            method: 'POST', 
+                            headers: { 'Content-Type': 'application/json' }, 
+                            body: JSON.stringify({ 
+                                roomId, 
+                                senderId: currentUserId, 
+                                actionType: 'CLEAR_TOKENS' 
+                            }) 
+                        });
+
+                        alert("All tokens cleared from the realm!");
+                    }} 
+                    className="mt-2 w-full bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800 py-2.5 rounded text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2 transition-colors"
+                  >
                       <Trash2 size={14} /> Clear All Tokens
                   </button>
 
