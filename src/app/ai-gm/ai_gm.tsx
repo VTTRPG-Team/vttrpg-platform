@@ -20,6 +20,7 @@ export const ai_gm = () => {
   
   const [players, setPlayers] = useState<string[]>([]);
   const [hostId, setHostId] = useState<string | null>(null); 
+  const [roomDescription, setRoomDescription] = useState<string>("");
 
   useEffect(() => {
     const initData = async () => {
@@ -35,8 +36,11 @@ export const ai_gm = () => {
       }
 
       if (roomId) {
-        const { data: roomData } = await supabase.from('rooms').select('host_id').eq('id', roomId).single();
-        if (roomData) setHostId(roomData.host_id);
+        const { data: roomData } = await supabase.from('rooms').select('host_id, description').eq('id', roomId).single();
+        if (roomData) {
+           setHostId(roomData.host_id);
+           if (roomData.description) setRoomDescription(roomData.description); // เก็บลง State
+        }
 
         const { data: rp } = await supabase.from('room_players').select('user_id').eq('room_id', roomId);
         if (rp) {
@@ -138,7 +142,15 @@ export const ai_gm = () => {
         text: m.type === 'USER' ? `${m.sender}: ${m.text}` : m.text
       }));
 
-      const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: aggregatedText, history: aiHistory }) });
+      const response = await fetch('/api/chat', { 
+         method: 'POST', 
+         headers: { 'Content-Type': 'application/json' }, 
+         body: JSON.stringify({ 
+            prompt: aggregatedText, 
+            history: aiHistory,
+            description: roomDescription // 🌟 ส่งเนื้อเรื่องที่ตั้งไว้ไปให้ AI ตรงนี้
+         }) 
+      });
       const data = await response.json();
       console.log(`[AI GM] เทิร์นนี้ตอบโดยโมเดล:`, data.modelUsed);
       let text = data.text;

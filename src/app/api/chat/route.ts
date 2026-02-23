@@ -7,22 +7,19 @@ export async function POST(req: Request) {
     if (!apiKey) return NextResponse.json({ error: "Key Missing" }, { status: 500 });
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const { prompt, history = [] } = await req.json();
     
-    // แปลงรูปแบบ History ให้ตรงกับที่ Gemini ต้องการ
+    // 🌟 1. รับค่า description เพิ่มเข้ามาจากหน้าบ้าน (ถ้าไม่มีให้เป็นค่าว่าง)
+    const { prompt, history = [], description = "" } = await req.json();
+    
     let formattedHistory = history.map((msg: any) => ({
       role: msg.role === 'AI' ? 'model' : 'user',
       parts: [{ text: msg.text }]
     }));
 
-    // ถ้า History เริ่มด้วย model (AI พูดก่อน) ให้ดักไว้ด้วย user ก่อน
     if (formattedHistory.length > 0 && formattedHistory[0].role === 'model') {
        formattedHistory.unshift({ role: 'user', parts: [{ text: '(Game Started)' }] });
     }
 
-    // ==========================================
-    // 🌟 ระบบ Fallback: เรียงจากเก่งสุด ไป อ่อนสุด
-    // ==========================================
     const fallbackModels = [
       "gemini-3-pro-preview",
       "gemini-3-flash-preview",
@@ -36,12 +33,9 @@ export async function POST(req: Request) {
     let usedModel = "";
     let lastError = null;
 
-    // 🌟 วนลูปเทสทีละโมเดล ถ้าพังก็ให้ข้ามไปตัวถัดไป
     for (const modelName of fallbackModels) {
        try {
          console.log(`🤖 Trying model: ${modelName}...`);
-         
-         // 🎯 สำคัญมาก: โคลน History ใหม่ทุกรอบ ป้องกันไม่ให้ SDK ยัด prompt ขยะลงไปถ้า API พังก่อนหน้า
          const currentHistory = structuredClone(formattedHistory);
          
          const model = genAI.getGenerativeModel({ 
@@ -49,6 +43,9 @@ export async function POST(req: Request) {
            systemInstruction: `
              You are an expert Game Master for a Tabletop RPG.
              Your job is to narrate the scene, react to player actions, and manage the game flow.
+
+             // 🌟 2. แทรกเนื้อเรื่องของห้องเข้าไปตรงนี้ ให้ AI อ่านก่อนเริ่มเกม
+             ${description ? `=== CAMPAIGN SETTING & CONTEXT ===\n${description}\n==================================\n` : ''}
 
              CRITICAL RULES:
              1. You will receive actions from multiple players at once in the format "PlayerName: Action". You must resolve all their actions together in a cohesive narrative.
@@ -70,7 +67,6 @@ export async function POST(req: Request) {
            `
          });
 
-         // 🎯 ใช้ History ที่เพิ่งโคลนมา
          const chat = model.startChat({ history: currentHistory });
          const result = await chat.sendMessage(prompt);
          
@@ -78,21 +74,18 @@ export async function POST(req: Request) {
          usedModel = modelName;
          
          console.log(`✅ Success! Answered by: ${modelName}`);
-         break; // ถ้าสำเร็จให้เบรกออกจากลูปทันที ไม่ต้องเทสตัวอื่นแล้ว
+         break; 
 
        } catch (err: any) {
          console.error(`❌ Failed with ${modelName}:`, err.message);
          lastError = err;
-         // ล้มแล้วลุก ลุยต่อลูปหน้า (ลองโมเดลตัวถัดไป)
        }
     }
 
-    // ถ้าวนจนครบทุกโมเดลแล้วยังพังอยู่ (เช่น เน็ตตัด หรือ API ล่มทั้งระบบ)
     if (!text) {
        throw new Error(`All Gemini models failed. Last error: ${lastError?.message}`);
     }
 
-    // ส่งคำตอบกลับไป พร้อมแอบแนบชื่อโมเดลที่ใช้รอดตายกลับไปด้วย
     return NextResponse.json({ text, modelUsed: usedModel });
 
   } catch (error: any) {
