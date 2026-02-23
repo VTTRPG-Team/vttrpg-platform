@@ -9,16 +9,15 @@ import CameraManager from '@/components/game/CameraManager'
 import TableBoard from '@/components/game/TableBoard'
 import Dice from '@/components/game/world/Dice'
 
-import GameControls from '@/components/game/ui/GameControls'
+// 🌟 เปลี่ยนมาใช้ TopUIOverlay ตัวเดียวจบ
+import TopUIOverlay from '@/components/game/ui/TopUIOverlay'
 import DiceControls from '@/components/game/ui/DiceControls'
 import DiceResultOverlay from '@/components/game/ui/DiceResultOverlay' 
 import VideoOverlay from '@/components/game/ui/VideoOverlay'
 import Environment from '@/components/game/ui/Environment'
-import AudioEngine from '@/components/game/ui/AudioEngine'
 import CursorOverlay from '@/components/player-actions/CursorOverlay' 
 import QuickChoices from '@/components/player-actions/QuickChoices' 
 
-// 🌟 Import เครื่องมือของ GM (เดี๋ยวเราจะสร้างไฟล์นี้ทีหลัง)
 import GMControlPanel from '@/components/game/ui/GMControlPanel'
 
 function PhysicsFloor() {
@@ -26,10 +25,8 @@ function PhysicsFloor() {
   return <mesh ref={ref as any} visible={false}><planeGeometry args={[20, 20]} /></mesh>
 }
 
-// 🌟 Props จะรับข้อมูลมาจาก page.tsx หลัก
-export default function HumanGMRoom({ roomId, currentUserId, myUsername, isHost }: any) {
-  const { viewMode, toggleView } = useGameStore()
-
+// 🌟 เพิ่ม gmType เข้ามาใน Props
+export default function HumanGMRoom({ roomId, currentUserId, myUsername, isHost, gmType }: any) {
   return (
     <main className="relative w-full h-screen overflow-hidden bg-black font-sans select-none">
         <RoomAudioRenderer />
@@ -51,7 +48,7 @@ export default function HumanGMRoom({ roomId, currentUserId, myUsername, isHost 
 
         {/* === LAYER 0.5: PLAYER VIDEOS === */}
         <div className="absolute top-24 right-6 z-40 pointer-events-auto">
-           <VideoOverlay />
+            <VideoOverlay />
         </div>
 
         {/* === LAYER 1: UI OVERLAY === */}
@@ -61,23 +58,12 @@ export default function HumanGMRoom({ roomId, currentUserId, myUsername, isHost 
           <CursorOverlay roomId={roomId} currentUserId={currentUserId} myUsername={myUsername} />
           <DiceResultOverlay />
           
-          <div className="w-full flex justify-between items-start z-50">
-             <div className="bg-black/40 backdrop-blur px-4 py-2 rounded-lg border border-white/10 text-white text-sm font-mono shadow-lg pointer-events-auto">
-               ROOM: <span className="text-yellow-400">{roomId}</span> <span className="text-red-400 ml-2">(Human GM)</span>
-             </div>
-             
-             <div className="flex items-center gap-3 pointer-events-auto">
-               <AudioEngine />
-               <button onClick={toggleView} className="bg-neutral-800/80 hover:bg-neutral-700 border border-white/20 text-white px-4 py-2 rounded-lg font-bold text-sm transition-all shadow-lg min-w-[140px]">
-                 {viewMode === 'PERSPECTIVE' ? '👁 View: Table' : '♟ View: Board'}
-               </button>
-               <GameControls />
-             </div>
-          </div>
+          {/* 🌟 THE FIX: เรียกใช้ Component รวมปุ่มตัวเดียวกับหน้า page.tsx */}
+          <TopUIOverlay roomId={roomId} gmType={gmType} />
 
           <DiceControls />
 
-          {/* 🌟 ถ้าเป็น Host ให้แสดงเครื่องมือ GM (ถ้าไม่ใช่ ก็แค่หน้าจอโล่งๆ ไม่มีช่องแชท) */}
+          {/* 🌟 ถ้าเป็น Host ให้แสดงเครื่องมือ GM */}
           {isHost && (
               <div className="absolute bottom-4 left-4 z-50 pointer-events-auto">
                   <GMControlPanel roomId={roomId} currentUserId={currentUserId} />
@@ -86,7 +72,8 @@ export default function HumanGMRoom({ roomId, currentUserId, myUsername, isHost 
 
         </div>
 
-        <Environment />
+        {/* 🌟 ส่ง gmType ไปด้วยเพื่อซ่อนปุ่มที่ไม่จำเป็น */}
+        <Environment gmType={gmType} />
     </main>
   )
 }

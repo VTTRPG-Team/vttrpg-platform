@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import { Volume1, Volume2, VolumeX, Music } from 'lucide-react'
+import { useGameStore } from '@/store/useGameStore'
 
 // 🎵 1. เปลี่ยนมาใช้ไฟล์เสียงในเครื่องเราเอง (ชัวร์ 100%)
 const AUDIO_LIBRARY = {
@@ -22,6 +23,7 @@ const AUDIO_LIBRARY = {
 }
 
 export default function AudioEngine() {
+  const { masterVolume } = useGameStore(); // 🌟 ดึงค่าระดับเสียงรวม
   const [volume, setVolume] = useState(0.8); // 🌟 ปรับค่าเริ่มต้นให้ดังขึ้นเป็น 80% จะได้ยินชัดๆ
   const [isMuted, setIsMuted] = useState(false);
   const [hasInteracted, setHasInteracted] = useState(false);
@@ -79,61 +81,12 @@ export default function AudioEngine() {
   };
 
   useEffect(() => {
-    const actualVolume = isMuted ? 0 : volume;
-    // ปรับให้เสียง Ambient ดังเท่าเสียง Master ไปเลยตอนเทสต์
+    const actualVolume = masterVolume;
+    // 🌟 ทุกเสียงจะดังตามสไลด์บาร์อันเดียวที่คุณโอมจะเลื่อน
     if (ambientPlayer.current) ambientPlayer.current.volume = actualVolume; 
     if (bgmPlayer.current) bgmPlayer.current.volume = actualVolume;
     if (sfxPlayer.current) sfxPlayer.current.volume = Math.min(actualVolume * 1.5, 1); 
-  }, [volume, isMuted]);
+  }, [masterVolume]);
 
-  return (
-    <div 
-      className="bg-neutral-800/80 hover:bg-neutral-800 border border-white/20 px-3 py-1.5 rounded-lg shadow-lg flex items-center gap-2 transition-all group pointer-events-auto"
-      onClick={startAmbientAudio} // 🌟 คลิกที่กล่องนี้ปุ๊บ เสียงจะถูกปลดล็อกทันที!
-    >
-      
-      {/* 🎵 ไอคอนแจ้งเตือนให้กดเพื่อเล่นเสียง */}
-      {!hasInteracted && (
-        <span className="flex items-center gap-1 text-[10px] text-yellow-400 font-bold mr-1 animate-pulse uppercase tracking-wider">
-          <Music size={12} /> Click to Play
-        </span>
-      )}
-
-      {/* ปุ่มกด Mute */}
-      <button 
-        onClick={(e) => {
-          e.stopPropagation();
-          setIsMuted(!isMuted);
-          startAmbientAudio();
-        }} 
-        className="text-white hover:scale-110 transition-transform focus:outline-none"
-        title={isMuted ? "Unmute" : "Mute"}
-      >
-        {isMuted || volume === 0 ? (
-          <VolumeX size={18} className="text-red-400" />
-        ) : volume < 0.5 ? (
-          <Volume1 size={18} className="text-green-400" />
-        ) : (
-          <Volume2 size={18} className="text-green-400" />
-        )}
-      </button>
-
-      {/* หลอดสไลเดอร์ */}
-      <input
-        type="range"
-        min="0"
-        max="1"
-        step="0.01"
-        value={isMuted ? 0 : volume}
-        onChange={(e) => {
-          setVolume(parseFloat(e.target.value));
-          if (isMuted && parseFloat(e.target.value) > 0) setIsMuted(false);
-          startAmbientAudio(); // ขยับหลอดปุ๊บ เล่นเสียงทันที
-        }}
-        onClick={(e) => e.stopPropagation()}
-        className="w-16 md:w-24 h-1.5 bg-neutral-600 rounded-lg appearance-none cursor-pointer accent-green-400 focus:outline-none"
-        title="Adjust Volume"
-      />
-    </div>
-  );
+  return null; // 🌟 ไม่ต้องโชว์อะไรแล้ว ย้าย UI ไปที่ VideoOverlay แทน
 }

@@ -31,7 +31,28 @@ export interface FloatingTextData {
   type: 'damage' | 'heal';
 }
 
+export interface TokenData {
+  id: string;
+  url: string;
+  x: number;
+  z: number; // ใช้ z เพราะบนกระดาน 3D แกนพื้นคือ x กับ z
+}
+
 interface GameState {
+  // 🌟 ระบบเสียงและการตั้งค่าอื่นๆ
+  masterVolume: number;
+  setMasterVolume: (v: number) => void;
+  cameraZoom: number;
+  setCameraZoom: (z: number) => void;
+
+  // 🌟 ระบบ Token
+  tokens: TokenData[];
+  addToken: (token: TokenData) => void;
+  updateTokenPosition: (id: string, x: number, z: number) => void;
+  removeToken: (id: string) => void;
+  clearTokens: () => void;
+  
+  // 🌟 ระบบ Quick Choices
   quickChoices: string[];
   setQuickChoices: (choices: string[]) => void;
   clearQuickChoices: () => void;
@@ -95,6 +116,24 @@ interface GameState {
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
+  // 🌟 ระบบเสียงและการตั้งค่าอื่นๆ
+  masterVolume: 0.8,
+  setMasterVolume: (v) => set({ masterVolume: v }),
+  cameraZoom: 1, // ค่าเริ่มต้นคือ 1 (ปกติ)
+  setCameraZoom: (z) => set({ cameraZoom: z }),
+  
+  // 🌟 ระบบ Token
+  tokens: [],
+  addToken: (token) => set((state) => ({ tokens: [...state.tokens, token] })),
+  updateTokenPosition: (id, x, z) => set((state) => ({
+    tokens: state.tokens.map(t => t.id === id ? { ...t, x, z } : t)
+  })),
+  removeToken: (id) => set((state) => ({
+    tokens: state.tokens.filter(t => t.id !== id)
+  })),
+  clearTokens: () => set({ tokens: [] }),
+  
+  // 🌟 ระบบ Quick Choices
   quickChoices: [],
   setQuickChoices: (choices) => set({ quickChoices: choices }),
   clearQuickChoices: () => set({ quickChoices: [] }),

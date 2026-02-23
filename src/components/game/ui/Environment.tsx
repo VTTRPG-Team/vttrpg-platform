@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { Zap, Moon } from 'lucide-react'
 
-export default function Environment() {
+export default function Environment({ gmType }: { gmType?: string }) { // 🌟 รับ gmType  
   const [isShaking, setIsShaking] = useState(false);
   const [isDark, setIsDark] = useState(false);
 
@@ -50,14 +50,17 @@ export default function Environment() {
         }}
       />
 
-      <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[9999] flex gap-3 pointer-events-auto">
-         <button onClick={triggerShake} className="bg-[#c2410c] hover:bg-[#ea580c] text-white px-4 py-2 rounded-lg text-sm font-bold shadow-[0_4px_0_rgb(154,52,18)] active:shadow-[0_0px_0_rgb(154,52,18)] active:translate-y-1 flex items-center gap-2 transition-all border-2 border-[#7c2d12]">
-            <Zap size={16} /> SHAKE
-         </button>
-         <button onClick={() => setIsDark(!isDark)} className="bg-[#4c1d95] hover:bg-[#5b21b6] text-white px-4 py-2 rounded-lg text-sm font-bold shadow-[0_4px_0_rgb(59,7,100)] active:shadow-[0_0px_0_rgb(59,7,100)] active:translate-y-1 flex items-center gap-2 transition-all border-2 border-[#2e1065]">
-            <Moon size={16} /> {isDark ? 'LIGHT UP' : 'DARK MODE'}
-         </button>
-      </div>
+      {/* 🌟 ซ่อนปุ่มกดถ้าไม่ใช่โหมด AI */}
+      {gmType == 'ai' && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[9999] flex gap-3 pointer-events-auto">
+          <button onClick={triggerShake} className="bg-[#c2410c] hover:bg-[#ea580c] text-white px-4 py-2 rounded-lg text-sm font-bold shadow-[0_4px_0_rgb(154,52,18)] active:shadow-[0_0px_0_rgb(154,52,18)] active:translate-y-1 flex items-center gap-2 transition-all border-2 border-[#7c2d12]">
+              <Zap size={16} /> SHAKE
+          </button>
+          <button onClick={() => setIsDark(!isDark)} className="bg-[#4c1d95] hover:bg-[#5b21b6] text-white px-4 py-2 rounded-lg text-sm font-bold shadow-[0_4px_0_rgb(59,7,100)] active:shadow-[0_0px_0_rgb(59,7,100)] active:translate-y-1 flex items-center gap-2 transition-all border-2 border-[#2e1065]">
+              <Moon size={16} /> {isDark ? 'LIGHT UP' : 'DARK MODE'}
+          </button>
+        </div>
+      )}
     </>
   )
 }

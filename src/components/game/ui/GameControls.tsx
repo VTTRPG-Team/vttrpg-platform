@@ -5,7 +5,7 @@ import { useGameStore } from '@/store/useGameStore'
 import { supabase } from '@/lib/supabase'
 import PusherClient from 'pusher-js'
 
-export default function GameControls() {
+export default function GameControls({ gmType }: { gmType?: string }) { // 🌟 รับ gmType  
   const router = useRouter()
   const params = useParams()
   const roomId = params?.id as string
@@ -131,19 +131,21 @@ export default function GameControls() {
           </button>
         </div>
         
-        {/* 🌟 กล่องรวมปุ่ม Debug */}
-        <div className="flex gap-1 p-2 bg-black/60 rounded-lg border border-gray-700 w-fit backdrop-blur-sm">
-          <span className="text-[10px] text-gray-400 font-bold self-center mr-1">DEBUG:</span>
-          <button onClick={() => handleDebugStat(-10, 'damage')} className="px-2 py-1 text-xs bg-red-950 hover:bg-red-800 text-red-200 border border-red-900 rounded">
-            -10 HP
-          </button>
-          <button onClick={() => handleDebugStat(-50, 'damage')} className="px-2 py-1 text-xs bg-red-950 hover:bg-red-800 text-red-200 border border-red-900 rounded">
-            -50 HP
-          </button>
-          <button onClick={() => handleDebugStat(20, 'heal')} className="px-2 py-1 text-xs bg-green-950 hover:bg-green-800 text-green-200 border border-green-900 rounded">
-            +20 HP
-          </button>
-        </div>
+        {/* 🌟 ซ่อนกล่อง Debug ทั้งหมดถ้าเป็นโหมด Human */}
+        {gmType == 'ai' && (
+          <div className="flex gap-1 p-2 bg-black/60 rounded-lg border border-gray-700 w-fit backdrop-blur-sm">
+            <span className="text-[10px] text-gray-400 font-bold self-center mr-1">DEBUG:</span>
+            <button onClick={() => handleDebugStat(-10, 'damage')} className="px-2 py-1 text-xs bg-red-950 hover:bg-red-800 text-red-200 border border-red-900 rounded">
+              -10 HP
+            </button>
+            <button onClick={() => handleDebugStat(-50, 'damage')} className="px-2 py-1 text-xs bg-red-950 hover:bg-red-800 text-red-200 border border-red-900 rounded">
+              -50 HP
+            </button>
+            <button onClick={() => handleDebugStat(20, 'heal')} className="px-2 py-1 text-xs bg-green-950 hover:bg-green-800 text-green-200 border border-green-900 rounded">
+              +20 HP
+            </button>
+          </div>
+        )}
       </div>
 
       {isPaused && (
