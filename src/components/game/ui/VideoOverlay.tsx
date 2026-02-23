@@ -157,6 +157,7 @@ function PlayerVideoCard({ p, playerData }: { p: Participant, playerData: any })
 // 2. Component หลักจัดการหน้าจอ Overlay
 // ==========================================
 export default function VideoOverlay() {
+  const { masterVolume, setMasterVolume, cameraZoom, setCameraZoom } = useGameStore(); // 🌟
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();
   const params = useParams();
@@ -214,6 +215,20 @@ export default function VideoOverlay() {
   return (
     // ขยายความกว้างกลับมาเป็น w-48 เพื่อให้การ์ดใหญ่ๆ แสดงได้พอดี
     <div className="flex flex-col gap-3 w-48 pointer-events-auto">
+      {/* 🌟 1. สไลด์บาร์ควบคุมเสียง (วางไว้เหนือแผงปุ่ม) */}
+      <div className="bg-[#1a0f0a]/95 p-2 rounded-lg border-2 border-[#3e2723] flex flex-col gap-1">
+          <div className="flex justify-between items-center text-[10px] text-yellow-400 font-bold uppercase px-1">
+             <span>Volume</span>
+             <span>{Math.round(masterVolume * 100)}%</span>
+          </div>
+          <input
+            type="range" min="0" max="1" step="0.01"
+            value={masterVolume}
+            onChange={(e) => setMasterVolume(parseFloat(e.target.value))}
+            className="w-full h-1.5 bg-neutral-600 rounded-lg appearance-none cursor-pointer accent-yellow-500"
+          />
+      </div>
+
       {isSpeakerOn && <RoomAudioRenderer />}
 
       {/* แผงควบคุมกล้อง/ไมค์ ของคุณโอม */}

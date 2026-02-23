@@ -14,20 +14,16 @@ import TableBoard from '@/components/game/TableBoard'
 import Dice from '@/components/game/world/Dice'
 
 import ChatInterface from '@/components/game/ui/ChatInterface'
-import GameControls from '@/components/game/ui/GameControls'
+import TopUIOverlay from '@/components/game/ui/TopUIOverlay' // 🌟 ใช้ตัวที่แยกออกมา
 import DiceControls from '@/components/game/ui/DiceControls'
 import DiceResultOverlay from '@/components/game/ui/DiceResultOverlay' 
 import VideoOverlay from '@/components/game/ui/VideoOverlay'
 import Environment from '@/components/game/ui/Environment'
-import AudioEngine from '@/components/game/ui/AudioEngine'
 import CursorOverlay from '@/components/player-actions/CursorOverlay' 
 import QuickChoices from '@/components/player-actions/QuickChoices' 
 
-// 🌟 นำเข้าของเพื่อน (Tutorial สำหรับตอนเล่นกับ AI)
 import TutorialOverlay from '@/components/game/ui/TutorialOverlay' 
-// 🌟 นำเข้าของคุณโอม (กระดานแยกสำหรับ Human GM)
 import HumanGMRoom from './HumanGMRoom'
-
 import RoomSync from '@/components/game/RoomSync'
 
 function PhysicsFloor() {
@@ -36,19 +32,15 @@ function PhysicsFloor() {
 }
 
 // ==========================================
-// 🌟 Component หน้ากระดานแบบดั้งเดิม (AI GM)
+// 🌟 Component หน้ากระดานแบบ AI GM
 // ==========================================
-function AIGMRoom({ id, currentUserId, myUsername }: any) {
-  const { viewMode, toggleView } = useGameStore()
-  
+function AIGMRoom({ id, currentUserId, myUsername, gmType }: any) {
   return (
       <main className="relative w-full h-screen overflow-hidden bg-black font-sans select-none">
         <RoomAudioRenderer />
-
-        {/* 🌟 วาง TutorialOverlay ของเพื่อนไว้ที่นี่! (แสดงเฉพาะโหมด AI) */}
         <TutorialOverlay />
 
-        {/* === LAYER 0: 3D WORLD === */}
+        {/* === LAYER 0: 3D WORLD (Graphics) === */}
         <div className="absolute inset-0 z-0 pointer-events-auto">
           <Canvas shadows>
             <CameraManager /> 
@@ -65,51 +57,40 @@ function AIGMRoom({ id, currentUserId, myUsername }: any) {
 
         {/* === LAYER 0.5: PLAYER VIDEOS === */}
         <div className="absolute top-24 right-6 z-40 pointer-events-auto">
-           <VideoOverlay />
+            <VideoOverlay />
         </div>
 
-        {/* === LAYER 1: UI OVERLAY === */}
+        {/* === LAYER 1: UI OVERLAY (HUD) === */}
         <div className="absolute inset-0 z-50 pointer-events-none flex flex-col justify-between p-4">
           <QuickChoices />
           <CursorOverlay roomId={id} currentUserId={currentUserId} myUsername={myUsername} />
           <DiceResultOverlay />
           
-          <div className="w-full flex justify-between items-start z-50">
-             <div className="bg-black/40 backdrop-blur px-4 py-2 rounded-lg border border-white/10 text-white text-sm font-mono shadow-lg pointer-events-auto">
-               ROOM: <span className="text-yellow-400">{id}</span>
-             </div>
-             
-             <div className="flex items-center gap-3 pointer-events-auto">
-               <AudioEngine />
-               <button onClick={toggleView} className="bg-neutral-800/80 hover:bg-neutral-700 border border-white/20 text-white px-4 py-2 rounded-lg font-bold text-sm transition-all shadow-lg min-w-[140px]">
-                 {viewMode === 'PERSPECTIVE' ? '👁 View: Table' : '♟ View: Board'}
-               </button>
-               <GameControls />
-             </div>
-          </div>
+          {/* 🌟 เรียกใช้ Component ส่วนบนที่เราแยกออกมา */}
+          <TopUIOverlay roomId={id} gmType={gmType} />
 
           <DiceControls />
 
+          {/* แถบแชทมุมล่างซ้าย */}
           <div className="absolute bottom-4 left-4 z-50 pointer-events-auto max-h-[50vh]">
               <ChatInterface />
           </div>
         </div>
 
-        <Environment />
+        {/* ส่วนจัดการเอฟเฟกต์หน้าจอ */}
+        <Environment gmType={gmType} />
       </main>
   )
 }
 
 // ==========================================
-// 🌟 Component หลัก (ทำหน้าที่ตรวจเช็คสิทธิ์ และเลือกว่าจะส่งไปหน้าไหน)
+// 🌟 หน้าหลักสำหรับเชื่อมต่อระบบ
 // ==========================================
 export default function RoomPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params) 
   const [token, setToken] = useState("");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [myUsername, setMyUsername] = useState<string>('Player');
-  
-  // 🌟 เก็บข้อมูลห้อง ว่าเป็น GM แบบไหน
   const [roomData, setRoomData] = useState<any>(null);
 
   useEffect(() => {
@@ -123,7 +104,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
       setCurrentUserId(user.id);
       setMyUsername(username);
 
-      // ดึงข้อมูลห้อง
       const { data: roomInfo } = await supabase.from('rooms').select('*').eq('id', id).single();
       if (roomInfo) setRoomData(roomInfo);
 
@@ -142,27 +122,26 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
 
   return (
     <LiveKitRoom
-      video={true}
-      audio={true}
-      token={token}
+      video={true} audio={true} token={token}
       serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
-      data-lk-theme="default"
-      connect={true}
+      data-lk-theme="default" connect={true}
     >
         <RoomSync roomId={id} currentUserId={currentUserId || ''} />
-        {/* 🌟 สวิตช์สลับหน้า! ถ้าเป็น Human GM ให้ไปหน้า HumanGMRoom ถ้าเป็น AI ให้ไปหน้า AIGMRoom */}
+        
         {roomData.gm_type === 'human' ? (
             <HumanGMRoom 
                 roomId={id} 
                 currentUserId={currentUserId} 
                 myUsername={myUsername} 
-                isHost={isHost} 
+                isHost={isHost}
+                gmType={roomData.gm_type}
             />
         ) : (
             <AIGMRoom 
                 id={id} 
                 currentUserId={currentUserId} 
-                myUsername={myUsername} 
+                myUsername={myUsername}
+                gmType={roomData.gm_type}
             />
         )}
     </LiveKitRoom>

@@ -39,6 +39,12 @@ export interface TokenData {
 }
 
 interface GameState {
+  // 🌟 ระบบเสียงและการตั้งค่าอื่นๆ
+  masterVolume: number;
+  setMasterVolume: (v: number) => void;
+  cameraZoom: number;
+  setCameraZoom: (z: number) => void;
+
   // 🌟 ระบบ Token
   tokens: TokenData[];
   addToken: (token: TokenData) => void;
@@ -110,6 +116,12 @@ interface GameState {
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
+  // 🌟 ระบบเสียงและการตั้งค่าอื่นๆ
+  masterVolume: 0.8,
+  setMasterVolume: (v) => set({ masterVolume: v }),
+  cameraZoom: 1, // ค่าเริ่มต้นคือ 1 (ปกติ)
+  setCameraZoom: (z) => set({ cameraZoom: z }),
+  
   // 🌟 ระบบ Token
   tokens: [],
   addToken: (token) => set((state) => ({ tokens: [...state.tokens, token] })),
