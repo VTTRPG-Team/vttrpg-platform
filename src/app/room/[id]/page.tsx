@@ -23,7 +23,9 @@ import AudioEngine from '@/components/game/ui/AudioEngine'
 import CursorOverlay from '@/components/player-actions/CursorOverlay' 
 import QuickChoices from '@/components/player-actions/QuickChoices' 
 
-// 🌟 Import หน้าใหม่เข้ามา
+// 🌟 นำเข้าของเพื่อน (Tutorial สำหรับตอนเล่นกับ AI)
+import TutorialOverlay from '@/components/game/ui/TutorialOverlay' 
+// 🌟 นำเข้าของคุณโอม (กระดานแยกสำหรับ Human GM)
 import HumanGMRoom from './HumanGMRoom'
 
 function PhysicsFloor() {
@@ -32,7 +34,7 @@ function PhysicsFloor() {
 }
 
 // ==========================================
-// 🌟 Component หน้ากระดานแบบดั้งเดิม (AI GM) ผมย้ายมันมาไว้เป็นฟังก์ชันแยกข้างในนี้
+// 🌟 Component หน้ากระดานแบบดั้งเดิม (AI GM)
 // ==========================================
 function AIGMRoom({ id, currentUserId, myUsername }: any) {
   const { viewMode, toggleView } = useGameStore()
@@ -40,6 +42,11 @@ function AIGMRoom({ id, currentUserId, myUsername }: any) {
   return (
       <main className="relative w-full h-screen overflow-hidden bg-black font-sans select-none">
         <RoomAudioRenderer />
+
+        {/* 🌟 วาง TutorialOverlay ของเพื่อนไว้ที่นี่! (แสดงเฉพาะโหมด AI) */}
+        <TutorialOverlay />
+
+        {/* === LAYER 0: 3D WORLD === */}
         <div className="absolute inset-0 z-0 pointer-events-auto">
           <Canvas shadows>
             <CameraManager /> 
@@ -54,10 +61,12 @@ function AIGMRoom({ id, currentUserId, myUsername }: any) {
           </Canvas>
         </div>
 
+        {/* === LAYER 0.5: PLAYER VIDEOS === */}
         <div className="absolute top-24 right-6 z-40 pointer-events-auto">
            <VideoOverlay />
         </div>
 
+        {/* === LAYER 1: UI OVERLAY === */}
         <div className="absolute inset-0 z-50 pointer-events-none flex flex-col justify-between p-4">
           <QuickChoices />
           <CursorOverlay roomId={id} currentUserId={currentUserId} myUsername={myUsername} />
@@ -100,7 +109,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [myUsername, setMyUsername] = useState<string>('Player');
   
-  // 🌟 เพิ่ม State เพื่อเก็บข้อมูลห้อง ว่าใครเป็น Host และเป็น GM แบบไหน
+  // 🌟 เก็บข้อมูลห้อง ว่าเป็น GM แบบไหน
   const [roomData, setRoomData] = useState<any>(null);
 
   useEffect(() => {
@@ -114,7 +123,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
       setCurrentUserId(user.id);
       setMyUsername(username);
 
-      // 🌟 ดึงข้อมูลห้อง
+      // ดึงข้อมูลห้อง
       const { data: roomInfo } = await supabase.from('rooms').select('*').eq('id', id).single();
       if (roomInfo) setRoomData(roomInfo);
 
@@ -129,7 +138,6 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
     return <div className="w-full h-screen bg-black flex items-center justify-center text-white font-mono animate-pulse">Connecting to Realm...</div>;
   }
 
-  // 🌟 เช็คว่าเราคือ Host ของห้องนี้หรือเปล่า
   const isHost = currentUserId === roomData.host_id;
 
   return (
@@ -141,7 +149,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
       data-lk-theme="default"
       connect={true}
     >
-        {/* 🌟 สวิตช์สลับหน้า! */}
+        {/* 🌟 สวิตช์สลับหน้า! ถ้าเป็น Human GM ให้ไปหน้า HumanGMRoom ถ้าเป็น AI ให้ไปหน้า AIGMRoom */}
         {roomData.gm_type === 'human' ? (
             <HumanGMRoom 
                 roomId={id} 

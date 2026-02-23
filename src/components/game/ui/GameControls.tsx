@@ -12,7 +12,6 @@ export default function GameControls() {
 
   const { isPaused, togglePause, myUsername } = useGameStore()
 
-  // --- Realtime Vote States ---
   const [voteActive, setVoteActive] = useState(false)
   const [yesVotes, setYesVotes] = useState(0)
   const [noVotes, setNoVotes] = useState(0)
@@ -23,7 +22,6 @@ export default function GameControls() {
 
   const localClientId = useRef(Math.random().toString(36).substring(7))
 
-  // 1. Setup Pusher & Realtime Listener
   useEffect(() => {
     if (!roomId) return
 
@@ -56,7 +54,6 @@ export default function GameControls() {
     return () => { pusher.unsubscribe(`room-${roomId}`); pusher.disconnect() }
   }, [roomId])
 
-  // 2. เช็คผลโหวต
   useEffect(() => {
     if (!voteActive) return
     if (yesVotes >= neededVotes) {
@@ -80,7 +77,6 @@ export default function GameControls() {
     }
   }, [yesVotes, noVotes, neededVotes, totalPlayers, voteActive, router, roomId])
 
-  // --- Actions ---
   const broadcastVote = async (action: string) => {
     try {
       await fetch('/api/pusher/vote', {

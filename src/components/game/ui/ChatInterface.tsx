@@ -70,32 +70,25 @@ export default function ChatInterface() {
   const speakerName = latestAiMessage?.sender || "Game Master";
 
   const parsedData = useMemo(() => parseAIText(storyText), [storyText]);
-  const displayStory = parsedData.cleanStory; // <-- เราจะเอาตัวนี้ไปโชว์แทน storyText
+  const displayStory = parsedData.cleanStory;
 
   useEffect(() => {
     const handleQuickAction = (e: Event) => {
       const customEvent = e as CustomEvent;
-      const choiceText = customEvent.detail; // ข้อความในปุ่มที่เพื่อนส่งมาให้
+      const choiceText = customEvent.detail; 
 
-      // ถ้า AI ไม่ได้กำลังพิมพ์ และเรายังไม่ได้กดส่ง Action ไปก่อนหน้านี้
       if (!isAiBusy && !hasSubmittedAction) {
-        sendAiAction(choiceText); // โยนข้อความส่งไปหา AI เลย!
-        stopTensionTimer(); // กดปุ่มแล้ว ต้องหยุดเวลานับถอยหลังด้วย
+        sendAiAction(choiceText); 
+        stopTensionTimer(); 
       }
     };
 
-    // เปิดหูรับฟัง Event ที่เพื่อนสร้างไว้
     window.addEventListener('quick-action-selected', handleQuickAction);
-
-    // ปิดหูเมื่อสลับหน้าเว็บ
     return () => {
       window.removeEventListener('quick-action-selected', handleQuickAction);
     };
   }, [isAiBusy, hasSubmittedAction, sendAiAction, stopTensionTimer]);
 
-  // =========================================================
-  // 🧠 ระบบสแกนคำและส่งสัญญาณ FX & AUDIO อัตโนมัติ!
-  // =========================================================
   useEffect(() => {
     if (storyText.length < processedStoryRef.current.length) {
       processedStoryRef.current = '';
@@ -106,23 +99,17 @@ export default function ChatInterface() {
 
     const justAppeared = (words: string[]) => words.some(w => lowerText.includes(w) && !oldText.includes(w));
 
-    // 🌪️ FX สั่นจอ
     if (justAppeared(['earthquake', 'shake', 'roar', 'explosion', 'boom', 'rumble', 'แผ่นดินไหว', 'สั่นสะเทือน', 'คำราม', 'ระเบิด'])) {
       window.dispatchEvent(new CustomEvent('ai-fx', { detail: { action: 'shake' } }));
     }
 
-    // 🌙 FX จอมืด
     if (justAppeared(['darkness', 'shadows', 'night falls', 'pitch black', 'creepy', 'deep cave', 'ความมืด', 'มืดมิด', 'ค่ำคืน', 'น่ากลัว'])) {
       window.dispatchEvent(new CustomEvent('ai-fx', { detail: { action: 'dark_on' } }));
     } 
-    // ☀️ FX สว่าง
     else if (justAppeared(['sunlight', 'bright', 'morning', 'torch', 'illuminates', 'สว่าง', 'แสงแดด', 'คบเพลิง', 'รุ่งเช้า'])) {
       window.dispatchEvent(new CustomEvent('ai-fx', { detail: { action: 'dark_off' } }));
     }
 
-    // ---------------------------------------------------------
-    // 🎵 AUDIO SFX (เสียงเอฟเฟกต์)
-    // ---------------------------------------------------------
     if (justAppeared(['sword', 'slash', 'blade', 'attack', 'ฟันดาบ', 'โจมตี'])) {
       window.dispatchEvent(new CustomEvent('ai-audio', { detail: { type: 'play_sfx', track: 'sword' } }));
     }
@@ -136,9 +123,6 @@ export default function ChatInterface() {
       window.dispatchEvent(new CustomEvent('ai-audio', { detail: { type: 'play_sfx', track: 'monster' } }));
     }
 
-    // ---------------------------------------------------------
-    // 🎵 AUDIO BGM (เปลี่ยนเพลงพื้นหลัง)
-    // ---------------------------------------------------------
     if (justAppeared(['rain', 'storm', 'ฝนตก', 'พายุ'])) {
       window.dispatchEvent(new CustomEvent('ai-audio', { detail: { type: 'play_bgm', track: 'rain' } }));
     } else if (justAppeared(['tavern', 'pub', 'inn', 'crowd', 'โรงเตี๊ยม', 'บาร์'])) {
@@ -150,82 +134,60 @@ export default function ChatInterface() {
     processedStoryRef.current = storyText; 
   }, [storyText]);
 
-  // =========================================================
-  // 🌟 4. ระบบจัดการ TAGs และ TENSION TIMER
-  // =========================================================
-  
-  // 4.1 อัปเดตพื้นหลังทันทีที่ AI พิมพ์ [BG:...] ออกมา
   useEffect(() => {
     if (parsedData.bg) {
       setCurrentBg(parsedData.bg);
     }
   }, [parsedData.bg, setCurrentBg]);
 
-  // 4.2 จัดการเลือด Choice และเต๋า เมื่อ AI พิมพ์ "เสร็จสิ้น"
   const processedMsgIdRef = useRef<string>('');
   
   useEffect(() => {
     if (!isAiBusy && latestAiMessage && latestAiMessage.id !== processedMsgIdRef.current) {
-       // ตัดคำจากข้อความที่สมบูรณ์แล้ว
        const finalParsed = parseAIText(latestAiMessage.text);
        
-       // หักเลือด/เพิ่มเลือด
        if (finalParsed.hpChange !== 0 && myUsername) {
           updatePlayerStat(myUsername, 'hp', finalParsed.hpChange);
        }
 
-       // 🌟 เช็กว่ามีคำสั่ง "ทอยเต๋า" ไหม? ถ้ามีให้เปิด UI เต๋า
        if (finalParsed.diceRequest) {
-          useGameStore.getState().triggerDiceRollEvent(
-            finalParsed.diceRequest.type as any,
-            finalParsed.diceRequest.target && finalParsed.diceRequest.target !== 'ALL' 
-              ? [finalParsed.diceRequest.target] 
-              : [] // ถ้าเป็น ALL ให้ส่ง Array เปล่าไป
-          );
-          
-          stopTensionTimer(); 
+         useGameStore.getState().triggerDiceRollEvent(
+           finalParsed.diceRequest.type as any,
+           finalParsed.diceRequest.target && finalParsed.diceRequest.target !== 'ALL' 
+             ? [finalParsed.diceRequest.target] 
+             : [] 
+         );
+         stopTensionTimer(); 
        }
-       
-       // 🌟 ถ้าไม่มีคำสั่งทอยเต๋า ค่อยเด้งปุ่ม Choice ปกติ
        else if (finalParsed.choices.length > 0) {
-          setQuickChoices(finalParsed.choices);
-          startTensionTimer(30); // เริ่มนับเวลาถอยหลัง
+         setQuickChoices(finalParsed.choices);
+         startTensionTimer(30); 
        }
 
        processedMsgIdRef.current = latestAiMessage.id;
     }
   }, [isAiBusy, latestAiMessage, myUsername, updatePlayerStat, setQuickChoices, startTensionTimer, stopTensionTimer]);
-  // =========================================================
-  // 🌟 4.3 ระบบนับถอยหลัง (Timer Countdown) ฉบับแก้เวลาค้าง
-  // =========================================================
 
-  // ตัวที่ 1: ทำหน้าที่ "ลดเวลา" ทุกๆ 1 วินาทีอย่างเดียว (ไม่สนการรีเรนเดอร์อื่นๆ)
   useEffect(() => {
-    // ถ้าไม่ได้เปิดโหมดจับเวลา ให้ข้ามไปเลย
     if (!isTimerActive) return;
 
     const intervalId = setInterval(() => {
-      tickTensionTimer(); // สั่งลดเวลาใน Store
+      tickTensionTimer(); 
     }, 1000);
 
     return () => clearInterval(intervalId);
-  }, [isTimerActive, tickTensionTimer]); // 👈 สังเกตว่าเราเอา tensionTimeLeft ออกจากวงเล็บนี้ เพื่อไม่ให้มันโดนรีเซ็ตตัวเอง
+  }, [isTimerActive, tickTensionTimer]); 
 
-  // ตัวที่ 2: ทำหน้าที่ "เช็กว่าเวลาหมดหรือยัง (เหลือ 0)"
   useEffect(() => {
     if (isTimerActive && tensionTimeLeft <= 0) {
       stopTensionTimer();
-      clearQuickChoices(); // ซ่อนปุ่มเพื่อน
+      clearQuickChoices(); 
       if (!hasSubmittedAction) {
         sendAiAction("ผู้เล่นลังเล ยืนอึ้งทำอะไรไม่ถูกเพราะหมดเวลาตัดสินใจ!");
       }
     }
   }, [isTimerActive, tensionTimeLeft, hasSubmittedAction, stopTensionTimer, clearQuickChoices, sendAiAction]);
 
-
-  // =========================================================
-  // UI LOGIC 
-  // =========================================================
   useEffect(() => {
     if (isPartyOpen) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isPartyOpen]);
@@ -264,10 +226,9 @@ export default function ChatInterface() {
   return (
     <>
       {/* ========================================================= */}
-      {/* 1. กล่องเนื้อเรื่อง Stardew Valley */}
+      {/* 🌟 เพิ่ม id="tutorial-story-panel" ที่กล่องนี้ */}
       {/* ========================================================= */}
-      <div className="fixed top-24 left-6 w-[320px] md:w-[380px] max-h-[75vh] z-[9000] pointer-events-none flex flex-col items-start">
-      {/* 🌟 ป้ายประกาศเวลา Tension Timer */}
+      <div id="tutorial-story-panel" className="fixed top-24 left-6 w-[320px] md:w-[380px] max-h-[75vh] z-[9000] pointer-events-none flex flex-col items-start">
       {isTimerActive && (
         <div className={`fixed top-12 left-1/2 transform -translate-x-1/2 px-6 py-2 rounded-lg font-bold text-xl md:text-2xl shadow-[4px_4px_0px_rgba(0,0,0,0.8)] z-[9999] border-4 transition-colors ${vt323.className} ${
           tensionTimeLeft <= 3 
@@ -346,9 +307,6 @@ export default function ChatInterface() {
         </div>
       </div>
 
-      {/* ========================================================= */}
-      {/* 1.5 หน้าต่าง Modal ประวัติเนื้อเรื่อง (History Log) */}
-      {/* ========================================================= */}
       {isHistoryOpen && (
         <div className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 pointer-events-auto animate-fade-in">
           <div className="bg-[#e7cfa0] border-4 border-[#8B5A2B] rounded-xl shadow-[10px_10px_0px_rgba(0,0,0,0.8)] w-full max-w-3xl h-[80vh] flex flex-col overflow-hidden">
@@ -389,9 +347,9 @@ export default function ChatInterface() {
       )}
 
       {/* ========================================================= */}
-      {/* 2. กล่องแชท Party (มุมขวาล่าง) */}
+      {/* 🌟 เพิ่ม id="tutorial-party-chat" ที่กล่องนี้ */}
       {/* ========================================================= */}
-      <div className="fixed bottom-6 right-6 z-[9999] pointer-events-auto">
+      <div id="tutorial-party-chat" className="fixed bottom-6 right-6 z-[9999] pointer-events-auto">
         {!isPartyOpen ? (
           <button onClick={() => setIsPartyOpen(true)} className="bg-blue-600 hover:bg-blue-500 text-white p-4 rounded-full shadow-lg transition-transform hover:scale-105 relative group">
             <MessageSquareText size={24} />

@@ -101,7 +101,6 @@ function PlayerVideoCard({ p }: { p: Participant }) {
           ) : null}
         </div>
 
-        {/* ป้ายชื่อ */}
         <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black via-black/80 to-transparent pt-6 pb-1 px-2 z-10">
           <h3 className={`${cinzel.className} text-[#F4E4BC] text-sm font-bold truncate drop-shadow-md`}>
             {username}
@@ -182,7 +181,6 @@ export default function VideoOverlay() {
     <div className="flex flex-col gap-3 w-48 pointer-events-auto">
       {isSpeakerOn && <RoomAudioRenderer />}
 
-      {/* 🎛️ ปุ่มควบคุมส่วนตัว (My Controls) */}
       <div className="flex justify-between gap-1 bg-[#1a0f0a]/95 p-2 rounded-lg border-2 border-[#3e2723] backdrop-blur-md shadow-xl">
           <button onClick={() => setIsMicOn(!isMicOn)} className={`flex-1 flex justify-center p-2 rounded-md transition-all ${isMicOn ? 'bg-[#3e2723] text-[#F4E4BC] hover:bg-[#5d4037]' : 'bg-red-900/80 text-red-200 shadow-[0_0_8px_red]'}`} title={isMicOn ? 'Mute Mic' : 'Unmute Mic'}>
             {isMicOn ? <Mic size={16}/> : <MicOff size={16}/>}
@@ -195,7 +193,6 @@ export default function VideoOverlay() {
           </button>
       </div>
 
-      {/* วิดีโอผู้เล่นทั้งหมด */}
       <div className="flex flex-col gap-3 max-h-[70vh] overflow-y-auto pr-1 pb-10">
          <style jsx>{`.no-scrollbar::-webkit-scrollbar { display: none; } .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }`}</style>
          <div className="flex flex-col gap-3 no-scrollbar">
