@@ -119,7 +119,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // 🌟 ระบบเสียงและการตั้งค่าอื่นๆ
   masterVolume: 0.8,
   setMasterVolume: (v) => set({ masterVolume: v }),
-  cameraZoom: 1.8, // ค่าเริ่มต้นคือ 1.8 (ปกติ)
+  cameraZoom: 2, // ค่าเริ่มต้นคือ 2 (ปกติ)
   setCameraZoom: (z) => set({ cameraZoom: z }),
   
   // 🌟 ระบบ Token
