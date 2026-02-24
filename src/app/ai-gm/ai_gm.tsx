@@ -20,6 +20,10 @@ export const ai_gm = () => {
   
   const [players, setPlayers] = useState<string[]>([]);
   const [hostId, setHostId] = useState<string | null>(null); 
+  const [roomDescription, setRoomDescription] = useState<string>("");
+  
+  // 🌟 เพิ่ม State เช็คว่าเราเป็นคนดูหรือเปล่า
+  const [isSpectator, setIsSpectator] = useState<boolean>(false);
 
   useEffect(() => {
     const initData = async () => {
@@ -30,28 +34,40 @@ export const ai_gm = () => {
         if (prof?.username) {
             const name = prof.username.trim();
             setMyUsername(name);
-            useGameStore.getState().setMyUsername(name); // ให้ Store จำชื่อไว้
+            useGameStore.getState().setMyUsername(name);
         }
       }
 
-      if (roomId) {
-        const { data: roomData } = await supabase.from('rooms').select('host_id').eq('id', roomId).single();
-        if (roomData) setHostId(roomData.host_id);
+      if (roomId && user) {
+        const { data: roomData } = await supabase.from('rooms').select('host_id, description').eq('id', roomId).single();
+        if (roomData) {
+           setHostId(roomData.host_id);
+           if (roomData.description) setRoomDescription(roomData.description);
+        }
 
-        const { data: rp } = await supabase.from('room_players').select('user_id').eq('room_id', roomId);
+        // 🌟 ดึง is_spectator มาเช็คด้วย
+        const { data: rp } = await supabase.from('room_players').select('user_id, is_spectator').eq('room_id', roomId);
         if (rp) {
-          const userIds = rp.map(r => r.user_id);
-          const { data: profs } = await supabase.from('profiles').select('username').in('id', userIds);
-          if (profs) setPlayers(profs.map(p => p.username ? p.username.trim() : 'Player'));
+          // 1. เช็คว่าตัวเราเองเป็นคนดูไหม
+          const myData = rp.find(r => r.user_id === user.id);
+          if (myData?.is_spectator) setIsSpectator(true);
+
+          // 2. คัดเอาเฉพาะ "ผู้เล่นตัวจริง" (ไม่เอาคนดู) มานับรวมในเกม
+          const activeUserIds = rp.filter(r => !r.is_spectator).map(r => r.user_id);
+          
+          if (activeUserIds.length > 0) {
+             const { data: profs } = await supabase.from('profiles').select('username').in('id', activeUserIds);
+             if (profs) setPlayers(profs.map(p => p.username ? p.username.trim() : 'Player'));
+          }
         }
       }
     };
     initData();
   }, [roomId]);
 
-  const processRef = useRef((text: string, rollRequest: any, msgId: string) => {});
+  const processRef = useRef((text: string, msgId: string) => {});
   useEffect(() => {
-    processRef.current = (text: string, rollRequest: any, msgId: string) => {
+    processRef.current = (text: string, msgId: string) => {
         setLoading(true);
         setCurrentAiText("");
         let i = 0;
@@ -63,9 +79,6 @@ export const ai_gm = () => {
             setCurrentAiText("");
             setLoading(false);
             setMessages(prev => [...prev, { id: msgId, userId: null, sender: 'AI GM', text, type: 'AI', channel: 'AI' }]);
-            
-            // 🌟 สั่งเด้งเต๋า พร้อมเป้าหมาย
-            if (rollRequest) useGameStore.getState().triggerDiceRoll(rollRequest.type as any, rollRequest.target);
           }
         }, 10);
     };
@@ -84,18 +97,27 @@ export const ai_gm = () => {
     const channel = pusher.subscribe(`room-${roomId}`);
     
     channel.bind('party-chat-event', (data: any) => {
-      const { message, senderId, actionType, rollRequest } = data;
+      const { message, senderId, actionType, diceData, statData } = data;
       if (senderId === localClientId) return; 
 
       if (actionType === 'AI_THINKING' || message?.id === 'sys-thinking') {
          setLoading(true);
       }
-      else if (actionType === 'AI_ERROR' || message?.id === 'sys-err') { // 🌟 THE FIX: ดักจับ id ด้วย เผื่อบางที actionType หลุด
-         setLoading(false); 
+      else if (actionType === 'AI_ERROR' || message?.id?.startsWith('err-')) {
+         if (message?.text) processRef.current(message.text, message.id); 
       }
-      else if (actionType === 'AI_RESPONSE') {
-        processRef.current(message.text, rollRequest, message.id); 
+      else if (actionType === 'AI_RESPONSE' || (message?.type === 'AI' && message?.sender === 'AI GM')) {
+        processRef.current(message.text, message.id); 
       } 
+      else if (actionType === 'DEBUG_UNLOCK') {
+        useGameStore.getState().debugUnlockDice();
+      }
+      else if (actionType === 'DICE_ROLL' && diceData) {
+        useGameStore.getState().addDiceRoll(diceData.rollId, diceData.userId, diceData.username, diceData.diceType, diceData.result, false);
+      }
+      else if (actionType === 'STAT_CHANGE' && statData) {
+        useGameStore.getState().triggerStatChange(statData.username, statData.amount, statData.type);
+      }
       else if (message && message.text) { 
         setMessages(prev => prev.some(m => m.id === message.id) ? prev : [...prev, message]);
         if (message.channel === 'AI' && message.type === 'USER') {
@@ -115,6 +137,8 @@ export const ai_gm = () => {
   const isGameStarted = lastAiMsgIndex !== -1;
   const currentTurnActions = isGameStarted ? aiMessages.slice(lastAiMsgIndex + 1).filter(m => m.type === 'USER') : [];
   const uniqueSubmitted = Array.from(new Set(currentTurnActions.map(m => m.sender)));
+  
+  // 🌟 AI จะรอแค่เฉพาะคนที่มีชื่อใน activeUserIds เท่านั้น
   const waitingFor = players.filter(p => !uniqueSubmitted.includes(p));
   const hasSubmittedAction = uniqueSubmitted.includes(myUsername);
 
@@ -130,23 +154,22 @@ export const ai_gm = () => {
         text: m.type === 'USER' ? `${m.sender}: ${m.text}` : m.text
       }));
 
-      const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: aggregatedText, history: aiHistory }) });
+      const response = await fetch('/api/chat', { 
+         method: 'POST', 
+         headers: { 'Content-Type': 'application/json' }, 
+         body: JSON.stringify({ 
+            prompt: aggregatedText, 
+            history: aiHistory,
+            description: roomDescription 
+         }) 
+      });
       const data = await response.json();
-      console.log(`[AI GM] เทิร์นนี้ตอบโดยโมเดล:`, data.modelUsed);
       let text = data.text;
 
       if (!text) throw new Error("No text from AI");
 
-      // 🌟 ดึงชื่อเป้าหมายจากการทอย (ถ้ามี)
-      let rollRequest = null;
-      const rollMatch = text.match(/\[ROLL_REQUEST:(D\d+)(?::(.+?))?\]/i);
-      if (rollMatch) {
-        rollRequest = { type: rollMatch[1].toUpperCase(), target: rollMatch[2] ? rollMatch[2].trim() : 'ALL' };
-        text = text.replace(/\[ROLL_REQUEST:(D\d+)(?::(.+?))?\]/ig, '').trim();
-      }
-
       import('./ai_asset').then(({ generateBoardImage }) => {
-          const cleanText = text.replace(/[*_#]/g, ''); 
+          const cleanText = text.replace(/\[.*?\]/g, '').replace(/[*_#]/g, ''); 
           const imagePrompt = isAutoStart ? `Fantasy RPG Opening Scene: ${cleanText.slice(0, 150)}` : `Fantasy RPG Scene: ${cleanText.slice(0, 150)}`; 
           generateBoardImage(roomId, imagePrompt);
       });
@@ -154,40 +177,21 @@ export const ai_gm = () => {
       const msgId = `ai-${Date.now()}`;
       const fullAiMessage: UIMessage = { id: msgId, userId: null, sender: 'AI GM', text: text, type: 'AI', channel: 'AI' };
 
-      fetch('/api/pusher/party-chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId, message: fullAiMessage, senderId: localClientId, actionType: 'AI_RESPONSE', rollRequest }) });
-      processRef.current(text, rollRequest, msgId);
+      fetch('/api/pusher/party-chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId, message: fullAiMessage, senderId: localClientId, actionType: 'AI_RESPONSE' }) });
+      
+      processRef.current(text, msgId);
       await supabase.from('game_messages').insert({ room_id: roomId, sender_name: 'AI GM', content: text, message_type: 'AI', channel: 'AI' });
 
     } catch (err) { 
       console.error("AI API Error:", err); 
       setLoading(false); 
 
-      // ==========================================
-      // 🌟 THE FIX: ระบบกู้ชีพ ปลดล็อคหน้าจอทุกคนเวลา AI พัง
-      // ==========================================
       const errorMsgId = `err-${Date.now()}`;
-      
-      // สร้างข้อความจำลองจาก AI เพื่อแจ้งเตือนว่าเกิด Error
-      const fallbackMsg: UIMessage = { 
-         id: errorMsgId, 
-         userId: null, 
-         sender: 'AI GM', 
-         text: '❌ [System Alert]: The AI connection was interrupted or rate-limited. Please try your action again.', 
-         type: 'AI', 
-         channel: 'AI' 
-      };
+      const fallbackMsg: UIMessage = { id: errorMsgId, userId: null, sender: 'AI GM', text: '❌ [System Alert]: The AI connection was interrupted or rate-limited. Please try your action again.', type: 'AI', channel: 'AI' };
 
-      // ยิงไปกระตุกจอเพื่อนผ่าน Pusher (ส่งเป็น AI_RESPONSE เพื่อให้ระบบจบเทิร์น)
-      fetch('/api/pusher/party-chat', { 
-         method: 'POST', 
-         headers: { 'Content-Type': 'application/json' }, 
-         body: JSON.stringify({ roomId, message: fallbackMsg, senderId: localClientId, actionType: 'AI_RESPONSE', rollRequest: null }) 
-      }).catch(() => {});
+      fetch('/api/pusher/party-chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId, message: fallbackMsg, senderId: localClientId, actionType: 'AI_RESPONSE' }) }).catch(() => {});
 
-      // โชว์แอนิเมชันแจ้งเตือนบนจอตัวเองด้วย
-      processRef.current(fallbackMsg.text, null, errorMsgId);
-      
-      // ==========================================
+      processRef.current(fallbackMsg.text, errorMsgId);
     }
   };
 
@@ -209,6 +213,9 @@ export const ai_gm = () => {
   };
 
   const sendAiAction = async (text: string) => {
+    // 🌟 บล็อคไม่ให้ Spectator แอบพิมพ์
+    if (isSpectator) return;
+    
     const msg: UIMessage = { id: `ai-usr-${Date.now()}`, userId: currentUserId, sender: myUsername, text, type: 'USER', channel: 'AI' };
     setMessages(prev => [...prev, msg]);
     
@@ -228,5 +235,6 @@ export const ai_gm = () => {
     checkHistory();
   }, [roomId, players, hostId, currentUserId]);
 
-  return { messages, loading, currentAiText, sendAiAction, sendPartyMessage, currentUserId, myUsername, waitingFor, hasSubmittedAction, isGameStarted };
+  // 🌟 ส่ง isSpectator ออกไปให้ UI ใช้งานด้วย
+  return { messages, loading, currentAiText, sendAiAction, sendPartyMessage, currentUserId, myUsername, waitingFor, hasSubmittedAction, isGameStarted, isSpectator };
 };

@@ -4,14 +4,59 @@ export type MessageType = 'USER' | 'SYSTEM' | 'AI';
 export type ChatTab = 'PARTY' | 'AI_GM';
 export type ChatChannel = 'PARTY' | 'AI';
 export type AiStatus = 'IDLE' | 'PLAYER_TURN' | 'WAITING_OTHERS' | 'THINKING' | 'TYPING';
-export type DiceType = 'D6' | 'D8' | 'D20' | null;
+export type DiceType = 'D4' | 'D6' | 'D8' | 'D10' | 'D12' | 'D20' | 'D100' | null;
 
 export interface ChatMessage {
   id: string; sender: string; text: string; type: MessageType; channel: ChatChannel; timestamp: Date;
 }
 
+export interface PlayerStats {
+  hp: number; maxHp: number; mana: number; maxMana: number; statuses: string[]; 
+}
+
+export interface DiceRollData {
+  id: string; 
+  userId: string;
+  username: string;
+  diceType: DiceType;
+  result: number;
+  isRolling: boolean;
+}
+
+// 🌟 เพิ่ม Interface สำหรับตัวเลขลอย
+export interface FloatingTextData {
+  id: string;
+  username: string;
+  amount: number;
+  type: 'damage' | 'heal';
+}
+
+export interface TokenData {
+  id: string;
+  url: string;
+  x: number;
+  z: number; // ใช้ z เพราะบนกระดาน 3D แกนพื้นคือ x กับ z
+}
+
 interface GameState {
-  // 🌟 เพิ่มการจำชื่อตัวเอง
+  // 🌟 ระบบเสียงและการตั้งค่าอื่นๆ
+  masterVolume: number;
+  setMasterVolume: (v: number) => void;
+  cameraZoom: number;
+  setCameraZoom: (z: number) => void;
+
+  // 🌟 ระบบ Token
+  tokens: TokenData[];
+  addToken: (token: TokenData) => void;
+  updateTokenPosition: (id: string, x: number, z: number) => void;
+  removeToken: (id: string) => void;
+  clearTokens: () => void;
+  
+  // 🌟 ระบบ Quick Choices
+  quickChoices: string[];
+  setQuickChoices: (choices: string[]) => void;
+  clearQuickChoices: () => void;
+  
   myUsername: string;
   setMyUsername: (name: string) => void;
 
@@ -35,19 +80,64 @@ interface GameState {
   voteStatus: { isActive: boolean; yesVotes: number; neededVotes: number; isFinished: boolean; };
   togglePause: () => void; startExitVote: () => void; castVote: () => void; resetVote: () => void;
 
-  // 🌟 อัปเกรด Dice System ให้ส่งแชทได้
   diceState: {
-    isActive: boolean; requiredDice: DiceType; targetPlayer: string | null;
-    isRolling: boolean; isShowingResult: boolean; lastResult: number | null;
-    pendingSubmit: string | null; // 🌟 ผลเต๋าที่รอส่งเข้าแชท
+    isActive: boolean;        
+    canRoll: boolean;         
+    requiredDice: DiceType;   
+    targetPlayers: string[];  
+    activeRolls: DiceRollData[]; 
+    pendingSubmit: string | null; 
   };
-  triggerDiceRoll: (diceType: DiceType, targetPlayer?: string | null) => void;
-  completeDiceRoll: (result: number) => void;
+  
+  triggerDiceRollEvent: (diceType: DiceType, targetPlayers?: string[]) => void;
+  addDiceRoll: (rollId: string, userId: string, username: string, diceType: DiceType, result: number, isLocal?: boolean) => void;
+  finishDiceRoll: (rollId: string) => void;
+  debugUnlockDice: () => void;
   clearPendingSubmit: () => void; 
-  closeDiceUI: () => void;
+  closeDiceArena: () => void;
+
+  playerStats: Record<string, PlayerStats>;
+  updatePlayerStat: (username: string, statType: 'hp' | 'mana', amount: number) => void;
+  setPlayerStatus: (username: string, status: string, action: 'add' | 'remove') => void;
+
+  // 🌟 เพิ่มระบบ Floating Text และอัปเดตเลือดในฟังก์ชันเดียว
+  floatingTexts: FloatingTextData[];
+  triggerStatChange: (username: string, amount: number, type: 'damage' | 'heal') => void;
+  removeFloatingText: (id: string) => void;
+
+  currentBg: string | null;
+  setCurrentBg: (bg: string | null) => void;
+  
+  isTimerActive: boolean;
+  tensionTimeLeft: number;
+  startTensionTimer: (seconds?: number) => void;
+  stopTensionTimer: () => void;
+  tickTensionTimer: () => void;
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
+  // 🌟 ระบบเสียงและการตั้งค่าอื่นๆ
+  masterVolume: 0.8,
+  setMasterVolume: (v) => set({ masterVolume: v }),
+  cameraZoom: 1, // ค่าเริ่มต้นคือ 1 (ปกติ)
+  setCameraZoom: (z) => set({ cameraZoom: z }),
+  
+  // 🌟 ระบบ Token
+  tokens: [],
+  addToken: (token) => set((state) => ({ tokens: [...state.tokens, token] })),
+  updateTokenPosition: (id, x, z) => set((state) => ({
+    tokens: state.tokens.map(t => t.id === id ? { ...t, x, z } : t)
+  })),
+  removeToken: (id) => set((state) => ({
+    tokens: state.tokens.filter(t => t.id !== id)
+  })),
+  clearTokens: () => set({ tokens: [] }),
+  
+  // 🌟 ระบบ Quick Choices
+  quickChoices: [],
+  setQuickChoices: (choices) => set({ quickChoices: choices }),
+  clearQuickChoices: () => set({ quickChoices: [] }),
+
   myUsername: '',
   setMyUsername: (name) => set({ myUsername: name }),
 
@@ -83,23 +173,120 @@ export const useGameStore = create<GameState>((set, get) => ({
   }),
   resetVote: () => set((state) => ({ voteStatus: { ...state.voteStatus, isActive: false, yesVotes: 0, isFinished: false } })),
 
-  // 🌟 Dice Logic ใหม่
-  diceState: { isActive: false, requiredDice: null, targetPlayer: null, isRolling: false, isShowingResult: false, lastResult: null, pendingSubmit: null },
-
-  triggerDiceRoll: (diceType, targetPlayer = null) => {
-    set({ diceState: { isActive: true, requiredDice: diceType, targetPlayer, isRolling: true, isShowingResult: false, lastResult: null, pendingSubmit: null } });
+  diceState: { 
+    isActive: false, 
+    canRoll: false, 
+    requiredDice: null, 
+    targetPlayers: [], 
+    activeRolls: [], 
+    pendingSubmit: null 
   },
 
-  completeDiceRoll: (result) => {
-    const { requiredDice } = get().diceState;
-    set((state) => ({
-      diceState: { 
-        ...state.diceState, isRolling: false, isShowingResult: true, lastResult: result,
-        pendingSubmit: `🎲 Rolled ${requiredDice}: [ ${result} ]` // 🌟 เอาผลยัดใส่ pendingSubmit
+  triggerDiceRollEvent: (diceType, targetPlayers = []) => {
+    set({ diceState: { isActive: true, canRoll: true, requiredDice: diceType, targetPlayers, activeRolls: [], pendingSubmit: null } });
+  },
+
+  addDiceRoll: (rollId, userId, username, diceType, result, isLocal = false) => {
+    set((state) => {
+      if (state.diceState.activeRolls.some(r => r.id === rollId)) return state;
+
+      const newRolls = [...state.diceState.activeRolls, { id: rollId, userId, username, diceType, result, isRolling: true }];
+      return { 
+        diceState: { 
+          ...state.diceState, 
+          isActive: true, 
+          canRoll: isLocal ? false : state.diceState.canRoll, 
+          activeRolls: newRolls 
+        } 
+      };
+    });
+  },
+
+  finishDiceRoll: (rollId) => {
+    set((state) => {
+      const updatedRolls = state.diceState.activeRolls.map(r => 
+        r.id === rollId ? { ...r, isRolling: false } : r
+      );
+      
+      const myRoll = updatedRolls.find(r => r.id === rollId);
+      let pendingText = state.diceState.pendingSubmit;
+      
+      if (myRoll && myRoll.username === get().myUsername) {
+         pendingText = `🎲 Rolled ${myRoll.diceType}: [ ${myRoll.result} ]`;
       }
-    }));
+
+      return { diceState: { ...state.diceState, activeRolls: updatedRolls, pendingSubmit: pendingText } };
+    });
   },
+
+  debugUnlockDice: () => set((state) => ({
+    diceState: { ...state.diceState, isActive: true, canRoll: true, requiredDice: 'D20' }
+  })),
 
   clearPendingSubmit: () => set((state) => ({ diceState: { ...state.diceState, pendingSubmit: null } })),
-  closeDiceUI: () => set((state) => ({ diceState: { ...state.diceState, isActive: false, isShowingResult: false, lastResult: null } }))
+  closeDiceArena: () => set((state) => ({ 
+    diceState: { 
+      isActive: false, 
+      activeRolls: [], 
+      requiredDice: null,
+      targetPlayers: [],
+      canRoll: false,
+      pendingSubmit: null
+    } 
+  })),
+
+  playerStats: {},
+
+  updatePlayerStat: (username, statType, amount) => set((state) => {
+    const currentStats = state.playerStats[username] || { hp: 100, maxHp: 100, mana: 50, maxMana: 50, statuses: [] };
+    const maxVal = statType === 'hp' ? currentStats.maxHp : currentStats.maxMana;
+    let newVal = currentStats[statType] + amount;
+    
+    if (newVal > maxVal) newVal = maxVal;
+    if (newVal < 0) newVal = 0;
+    return { playerStats: { ...state.playerStats, [username]: { ...currentStats, [statType]: newVal } } };
+  }),
+
+  setPlayerStatus: (username, status, action) => set((state) => {
+    const currentStats = state.playerStats[username] || { hp: 100, maxHp: 100, mana: 50, maxMana: 50, statuses: [] };
+    let newStatuses = [...currentStats.statuses];
+    if (action === 'add' && !newStatuses.includes(status)) newStatuses.push(status);
+    if (action === 'remove') newStatuses = newStatuses.filter(s => s !== status);
+
+    return {
+      playerStats: {
+        ...state.playerStats,
+        [username]: { ...currentStats, statuses: newStatuses }
+      }
+    };
+  }),
+
+  // 🌟 ฟังก์ชันจัดการ Damage / Heal
+  floatingTexts: [],
+  triggerStatChange: (username, amount, type) => set((state) => {
+    const id = Math.random().toString(36).substring(2, 9);
+    
+    // อัปเดต HP ไปด้วยเลย
+    const currentStats = state.playerStats[username] || { hp: 100, maxHp: 100, mana: 50, maxMana: 50, statuses: [] };
+    let newHp = currentStats.hp + amount;
+    if (newHp > currentStats.maxHp) newHp = currentStats.maxHp;
+    if (newHp < 0) newHp = 0;
+
+    return {
+      playerStats: { ...state.playerStats, [username]: { ...currentStats, hp: newHp } },
+      floatingTexts: [...state.floatingTexts, { id, username, amount: Math.abs(amount), type }]
+    };
+  }),
+  removeFloatingText: (id) => set((state) => ({
+    floatingTexts: state.floatingTexts.filter(ft => ft.id !== id)
+  })),
+
+  currentBg: null,
+  setCurrentBg: (bg) => set({ currentBg: bg }),
+
+  isTimerActive: false,
+  tensionTimeLeft: 0, 
+  startTensionTimer: (seconds = 10) => set({ isTimerActive: true, tensionTimeLeft: seconds }),
+  stopTensionTimer: () => set({ isTimerActive: false, tensionTimeLeft: 0 }),
+  tickTensionTimer: () => set((state) => ({ tensionTimeLeft: Math.max(0, state.tensionTimeLeft - 1) })),
 }))
