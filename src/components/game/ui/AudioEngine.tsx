@@ -10,14 +10,14 @@ const AUDIO_LIBRARY = {
   
   // (พวกนี้ถ้าหาไฟล์ได้ ก็โหลดมาใส่แล้วเปลี่ยนลิงก์เป็น /sounds/... ได้เลยครับ)
   sfx: {
-    sword: 'https://actions.google.com/sounds/v1/weapons/sword_clash.ogg',
-    magic: 'https://actions.google.com/sounds/v1/science_fiction/alien_beam.ogg',
-    explosion: 'https://actions.google.com/sounds/v1/explosions/explosion_large.ogg',
-    monster: 'https://actions.google.com/sounds/v1/horror/monster_zombie_growl.ogg',
+    sword: 'sounds/sword.mp3',
+    magic: 'sounds/magic.mp3',
+    explosion: 'sounds/explosion.mp3',
+    monster: 'sounds/monster.mp3',
   },
   bgm: {
     rain: 'https://actions.google.com/sounds/v1/weather/rain_heavy_loud.ogg',
-    tavern: 'https://actions.google.com/sounds/v1/crowds/pub_ambience.ogg',
+    tavern: '/sounds/ambient.mp3',
     dungeon: 'https://actions.google.com/sounds/v1/horror/ambience_creepy_drone.ogg',
   }
 }
